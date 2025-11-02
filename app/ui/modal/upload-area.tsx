@@ -130,7 +130,7 @@ export default function UploadArea({
           )}
         </p>
         <p className="text-gray-500 text-sm">
-          Supported file types: PDF, txt, Markdown, Audio (e.g. mp3)
+          Supported: PDF, Text (.txt), Markdown (.md)
         </p>
 
         {/* Hidden file input */}
@@ -140,7 +140,7 @@ export default function UploadArea({
           onChange={handleFileChange}
           style={{ display: 'none' }}
           multiple
-          accept=".pdf,.txt,.md,.mp3,.mp4"
+          accept=".pdf,.txt,.md"
         />
 
         {/* Show files being uploaded if any */}
