@@ -12,10 +12,10 @@ export default function DefaultDisplay({
   return (
     <div className="flex h-full w-1/2 flex-col items-center justify-center p-8">
       <div className="mb-6 text-center">
-        <h3 className="mb-2 text-2xl font-semibold text-gray-800">
+        <h3 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-gray-100">
           Ready to get focused?
         </h3>
-        <p className="text-gray-500">
+        <p className="text-gray-500 dark:text-gray-400">
           Upload your learning materials to start a personalized learning
           experience
         </p>
