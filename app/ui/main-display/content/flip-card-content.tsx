@@ -77,7 +77,7 @@ export default function FlipCardContent({
         >
           {/* Front of card */}
           <motion.div
-            className="absolute w-full h-full bg-white border-2 border-blue-400 rounded-lg p-6 flex items-center justify-center text-center"
+            className="absolute w-full h-full bg-white dark:bg-gray-800 border-2 border-blue-400 dark:border-blue-600 rounded-lg p-6 flex items-center justify-center text-center"
             style={{
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
@@ -86,12 +86,12 @@ export default function FlipCardContent({
               height: '100%',
             }}
           >
-            <p className="text-2xl font-medium">{currentCard.front}</p>
+            <p className="text-2xl font-medium dark:text-gray-100">{currentCard.front}</p>
           </motion.div>
 
           {/* Back of card */}
           <motion.div
-            className="absolute w-full h-full bg-blue-100 border-2 border-blue-400 rounded-lg p-6 flex items-center justify-center text-center"
+            className="absolute w-full h-full bg-blue-100 dark:bg-blue-900/40 border-2 border-blue-400 dark:border-blue-600 rounded-lg p-6 flex items-center justify-center text-center"
             style={{
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
@@ -101,7 +101,7 @@ export default function FlipCardContent({
               height: '100%',
             }}
           >
-            <p className="text-2xl font-medium">{currentCard.back}</p>
+            <p className="text-2xl font-medium dark:text-gray-100">{currentCard.back}</p>
           </motion.div>
         </motion.div>
       </div>
