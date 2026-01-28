@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [showStudio, setShowStudio] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [absenceReturnData, setAbsenceReturnData] = useState<{ duration: number } | null>(null);
+  const [isOnBreak, setIsOnBreak] = useState(false);
 
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -207,10 +208,10 @@ export default function Dashboard() {
     try {
       let generated = null;
       switch (contentType) {
-        case 'flipcard': generated = await generateFlashcards(summaryTextRef.current); break;
-        case 'quiz': generated = await generateQuiz(summaryTextRef.current); break;
-        case 'mindmap': generated = await generateMindmap(summaryTextRef.current); break;
-        case 'mini-game': generated = await generateMiniGame(summaryTextRef.current); break;
+        case 'flipcard': generated = await generateFlashcards(summaryTextRef.current, documentId); break;
+        case 'quiz': generated = await generateQuiz(summaryTextRef.current, documentId); break;
+        case 'mindmap': generated = await generateMindmap(summaryTextRef.current, documentId); break;
+        case 'mini-game': generated = await generateMiniGame(summaryTextRef.current, documentId); break;
       }
 
       if (generated) {
@@ -245,6 +246,44 @@ export default function Dashboard() {
       }
     }
   }, [contentLoaded, updateFocus, currentContentType, sessionId]);
+
+  // Manual content type switch from tabs
+  const handleContentTypeRequest = useCallback(async (type: string) => {
+    if (!summaryTextRef.current || isGeneratingRef.current) return;
+
+    // Text is instant — just swap data
+    if (type === 'text') {
+      setCurrentData(prev => prev ? {
+        type: 'text',
+        data: { title: prev.data?.title || 'Summary', content: summaryTextRef.current },
+        timestamp: Date.now(),
+      } : null);
+      return;
+    }
+
+    // Generate content for the requested type
+    isGeneratingRef.current = true;
+    setIsGeneratingContent(true);
+
+    try {
+      let generated = null;
+      switch (type) {
+        case 'flipcard': generated = await generateFlashcards(summaryTextRef.current, documentId); break;
+        case 'quiz': generated = await generateQuiz(summaryTextRef.current, documentId); break;
+        case 'mindmap': generated = await generateMindmap(summaryTextRef.current, documentId); break;
+        case 'mini-game': generated = await generateMiniGame(summaryTextRef.current, documentId); break;
+      }
+
+      if (generated) {
+        setCurrentData({ type: generated.type || type, data: generated.data, timestamp: Date.now() });
+      }
+    } catch (err) {
+      console.error('Content generation failed:', err);
+    } finally {
+      isGeneratingRef.current = false;
+      setIsGeneratingContent(false);
+    }
+  }, []);
 
   // Absence
   const handleAbsenceStart = useCallback(() => setIsAbsent(true), []);
@@ -281,39 +320,62 @@ export default function Dashboard() {
           isLoading={isLoading || isGeneratingContent}
           contentData={currentData}
           onUpload={() => setShowModal(true)}
+          onContentTypeRequest={handleContentTypeRequest}
         />
 
-        {/* State badge */}
-        {contentLoaded && (
-          <div className="absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-            {currentState}
-          </div>
-        )}
-
-        {/* Absence bar */}
-        {isAbsent && contentLoaded && (
+        {/* Absence bar — slides in when face disappears */}
+        {isAbsent && contentLoaded && !isOnBreak && (
           <div className="absolute bottom-0 left-0 right-0 bg-gray-800/90 backdrop-blur-sm text-white px-6 py-3 flex items-center justify-between z-50">
             <span className="text-sm">Still there?</span>
             <div className="flex gap-3">
-              <button onClick={() => setIsAbsent(false)} className="px-4 py-1.5 text-sm bg-white/20 hover:bg-white/30 rounded-full transition">
+              <button
+                onClick={() => setIsAbsent(false)}
+                className="px-4 py-1.5 text-sm bg-white/20 hover:bg-white/30 rounded-full transition"
+              >
                 I&apos;m here
               </button>
-              <button onClick={() => setIsAbsent(false)} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 rounded-full transition">
+              <button
+                onClick={() => { setIsAbsent(false); setIsOnBreak(true); }}
+                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 rounded-full transition"
+              >
                 Taking a break
               </button>
             </div>
           </div>
         )}
 
-        {/* Return recap */}
-        {absenceReturnData && currentData && (
+        {/* Break screen — calm, no pressure */}
+        {isOnBreak && (
+          <div className="absolute inset-0 bg-gray-950/95 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="max-w-sm text-center">
+              <div className="text-4xl mb-4">&#9749;</div>
+              <h2 className="text-xl font-medium text-white mb-2">Enjoy your break</h2>
+              <p className="text-gray-400 text-sm mb-8">Take your time. Your session is paused.</p>
+              <button
+                onClick={() => { setIsOnBreak(false); setAbsenceReturnData({ duration: 0 }); }}
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+              >
+                I&apos;m back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Return recap — shown after coming back */}
+        {absenceReturnData && currentData && !isOnBreak && (
           <div className="absolute inset-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="max-w-md text-center p-8">
-              <p className="text-gray-600 dark:text-gray-400 mb-2 text-sm">Welcome back</p>
-              <p className="text-lg font-medium mb-4 dark:text-gray-100">
-                You were reading: <span className="text-blue-600">{currentData.data?.title || 'your material'}</span>
+              <p className="text-gray-500 dark:text-gray-400 mb-3 text-sm">Welcome back</p>
+              <p className="text-lg font-medium mb-2 dark:text-gray-100">
+                {currentData.data?.title || 'Your material'}
               </p>
-              <button onClick={handleDismissReturn} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                Pick up where you left off
+              </p>
+              <button
+                onClick={handleDismissReturn}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+              >
                 Continue
               </button>
             </div>
