@@ -71,7 +71,7 @@ export default function MiniGameContent({ data }: MiniGameContentProps) {
 
       <div className="flex flex-col md:flex-row gap-8 mt-8">
         {/* Draggables */}
-        <div className="flex-1 bg-blue-50 p-4 rounded-lg min-h-[200px]">
+        <div className="flex-1 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg min-h-[200px]">
           <h2 className="font-semibold text-center mb-4">Tasks</h2>
           <div className="flex flex-wrap gap-3 justify-center">
             {data.challenges
@@ -81,7 +81,7 @@ export default function MiniGameContent({ data }: MiniGameContentProps) {
                   key={idx}
                   draggable={!submitted}
                   onDragStart={() => handleDragStart(challenge.task)}
-                  className={`p-3 bg-white rounded-md shadow-md cursor-move text-center w-40 ${
+                  className={`p-3 bg-white dark:bg-gray-700 dark:text-gray-100 rounded-md shadow-md cursor-move text-center w-40 ${
                     submitted ? "opacity-50 cursor-default" : ""
                   }`}
                 >
@@ -92,7 +92,7 @@ export default function MiniGameContent({ data }: MiniGameContentProps) {
         </div>
 
         {/* Droppables */}
-        <div className="flex-1 bg-green-50 p-4 rounded-lg min-h-[200px]">
+        <div className="flex-1 bg-green-50 dark:bg-green-900/20 p-4 rounded-lg min-h-[200px]">
           <h2 className="font-semibold text-center mb-4">Solutions (Questions)</h2>
           <div className="flex flex-col gap-4">
             {data.challenges.map((challenge, idx) => {
@@ -105,11 +105,11 @@ export default function MiniGameContent({ data }: MiniGameContentProps) {
                   onDragOver={e => e.preventDefault()}
                   onDrop={() => handleDrop(challenge.solution)}
                   className={`p-4 rounded-md min-h-[80px] flex flex-col items-center justify-start gap-2
-                    ${submitted ? (isCorrect ? "bg-green-100 border border-green-400" : "bg-red-100 border border-red-400") : "bg-white border border-gray-300"}
+                    ${submitted ? (isCorrect ? "bg-green-100 dark:bg-green-900/30 border border-green-400" : "bg-red-100 dark:bg-red-900/30 border border-red-400") : "bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600"}
                   `}
                 >
                   {/* Always show the solution/question */}
-                  <div className="text-sm font-semibold text-gray-700 text-center">
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 text-center">
                     {challenge.solution}
                   </div>
 
