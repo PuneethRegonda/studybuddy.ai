@@ -17,10 +17,10 @@ export interface QuizContentProps {
     description?: string;
     questions: QuizQuestion[];
   };
+  onQuizComplete?: (score: number, total: number) => void;
 }
 
-export default function QuizContent({ data }: QuizContentProps) {
-  console.log('QuizContent received data:', data);
+export default function QuizContent({ data, onQuizComplete }: QuizContentProps) {
 
   // Validate that data and questions exist
   const isValidQuizData = data &&
@@ -73,6 +73,8 @@ if (!isValidQuizData) {
   const handleNextQuestion = () => {
     if (isLastQuestion) {
       setShowResults(true);
+      const score = calculateScore();
+      onQuizComplete?.(score, data.questions.length);
     } else {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     }
