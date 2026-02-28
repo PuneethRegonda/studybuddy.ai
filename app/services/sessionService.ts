@@ -2,6 +2,22 @@
 
 import { BACKEND_API_URL } from '@/app/lib/constants';
 
+export async function getSections(documentId: string) {
+  const res = await fetch(`${BACKEND_API_URL}/api/sections/${documentId}`);
+  if (!res.ok) throw new Error('Failed to get sections');
+  return res.json();
+}
+
+export async function updateSectionProgress(documentId: string, sectionId: string, status: string, quizScore?: number) {
+  const res = await fetch(`${BACKEND_API_URL}/api/sections/${documentId}/${sectionId}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, quiz_score: quizScore }),
+  });
+  if (!res.ok) throw new Error('Failed to update progress');
+  return res.json();
+}
+
 export async function listDocuments() {
   const res = await fetch(`${BACKEND_API_URL}/api/documents`);
   if (!res.ok) throw new Error('Failed to list documents');
