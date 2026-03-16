@@ -7,6 +7,7 @@ import StudioPanel from '@/app/ui/studio-panel/studio-panel';
 import UploadSourcesModal from '@/app/ui/modal/upload-source-modal';
 import MainDisplay from '@/app/ui/main-display/main-display';
 import AgentCard from '@/app/ui/agent/agent-card';
+import { predictFocus, ActivityTracker } from '@/app/lib/focus-detection';
 import { sendFile } from '@/app/services/send-file';
 import { BACKEND_API_URL } from '@/app/lib/constants';
 import {
@@ -59,6 +60,25 @@ export default function Dashboard() {
   const summaryTextRef = useRef('');
   const sectionsDataRef = useRef<any[]>([]);
   const focusLowSince = useRef<number | null>(null);
+  const focusHistoryRef = useRef<{ score: number; timestamp: number }[]>([]);
+  const activityTrackerRef = useRef<ActivityTracker | null>(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState<any>(null);
+
+  // Start activity tracker on mount
+  useEffect(() => {
+    const tracker = new ActivityTracker(60_000);
+    tracker.start();
+    activityTrackerRef.current = tracker;
+
+    tracker.on((state) => {
+      // Tab hidden = treat as absence
+      if (!state.isTabVisible && !isAbsent) {
+        setIsAbsent(true);
+      }
+    });
+
+    return () => tracker.stop();
+  }, []);
 
   // Load a document's sections from DB
   const loadDocument = useCallback(async (docId: string) => {
@@ -77,6 +97,13 @@ export default function Dashboard() {
       setSources(prev => prev.map(s => ({ ...s, isActive: s.id === docId })));
       setContentLoaded(true);
       setShowStudio(true);
+
+      // Load knowledge graph
+      try {
+        const kgRes = await fetch(`${BACKEND_API_URL}/api/documents/${docId}/graph`);
+        const kgData = await kgRes.json();
+        if (kgData.knowledge_graph) setKnowledgeGraph(kgData.knowledge_graph);
+      } catch { /* KG is optional */ }
 
       // Create session
       createSession(docId).then(r => setSessionId(r.id)).catch(() => {});
@@ -299,9 +326,45 @@ export default function Dashboard() {
 
     if (!contentLoaded || !documentId || !currentSectionId) return;
 
+    // Track focus history for prediction
+    const now = Date.now();
+    focusHistoryRef.current.push({ score, timestamp: now });
+    // Keep last 60 seconds
+    focusHistoryRef.current = focusHistoryRef.current.filter(h => now - h.timestamp < 60_000);
+
+    // Use prediction to intervene BEFORE focus drops
+    const prediction = predictFocus(focusHistoryRef.current);
+
+    // Check activity tracker — phone detection
+    const activity = activityTrackerRef.current?.getState();
+    const onPhone = activity?.isProbablyOnPhone && score > 30;
+
+    if (onPhone && !agentMessage) {
+      // High focus score but no interaction — probably on phone
+      setAgentMessage({
+        message: "Looks like you might be away from the screen. Still studying?",
+        buttons: [
+          { label: "I'm here", action: "dismiss" },
+          { label: "Take a break", action: "dismiss" },
+        ],
+      });
+      return;
+    }
+
+    // Proactive: prediction says focus will drop below 35 within 30 seconds
+    if (prediction.isDecliningSteadily && prediction.predictedScore < 35 && score > 35 && !agentMessage) {
+      console.log(`[Predict] Focus declining: ${score}% now → ${prediction.predictedScore}% in 30s`);
+      agentFocusDrop(documentId, currentSectionId, currentContentType)
+        .then(action => setAgentMessage({ message: action.message, buttons: action.buttons || [] }))
+        .catch(() => {});
+      focusLowSince.current = null;
+      return;
+    }
+
+    // Reactive fallback: focus already low for 10 seconds
     if (score < 35) {
-      if (!focusLowSince.current) focusLowSince.current = Date.now();
-      const duration = Date.now() - focusLowSince.current;
+      if (!focusLowSince.current) focusLowSince.current = now;
+      const duration = now - focusLowSince.current;
       if (duration > 10000 && !agentMessage) {
         focusLowSince.current = null;
         agentFocusDrop(documentId, currentSectionId, currentContentType)
@@ -339,6 +402,7 @@ export default function Dashboard() {
         sections={sections}
         currentSectionId={currentSectionId}
         onSectionClick={handleSectionClick}
+        knowledgeGraph={knowledgeGraph}
       />
 
       <div className="flex-1 flex flex-col relative">

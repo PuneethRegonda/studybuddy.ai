@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Volume2, VolumeX, Pause, Play } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Loader2 } from 'lucide-react';
+import { BACKEND_API_URL } from '@/app/lib/constants';
 
 interface TextContentProps {
   data: {
@@ -20,102 +21,134 @@ function cleanMarkdown(content: string): string {
 }
 
 function prepareForTTS(content: string): string {
-  // Strip markdown syntax
+  // Split by headings first — add a long pause after each heading
   let text = content
-    .replace(/#{1,6}\s+/g, '')          // headings
-    .replace(/\*\*(.*?)\*\*/g, '$1')     // bold
-    .replace(/\*(.*?)\*/g, '$1')         // italic
-    .replace(/`(.*?)`/g, '$1')           // inline code
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
-    .replace(/^[-*+]\s/gm, '')           // list markers
-    .replace(/^\d+\.\s/gm, '')           // numbered lists
-    .replace(/^>\s/gm, '')               // blockquotes
-    .replace(/---+/g, '')                // horizontal rules
-    .replace(/\n{3,}/g, '\n\n');         // excess newlines
+    // Convert headings to spoken form with pauses
+    .replace(/#{1,6}\s+(.*?)$/gm, '\n\n$1.\n\n')
+    // Strip formatting
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Convert bullet points to spoken sentences
+    .replace(/^[-*+]\s+(.*?)$/gm, '$1.')
+    // Convert numbered lists
+    .replace(/^\d+\.\s+(.*?)$/gm, '$1.')
+    // Strip blockquotes
+    .replace(/^>\s/gm, '')
+    // Strip horizontal rules
+    .replace(/---+/g, '')
+    // Ensure paragraphs have clear breaks (Edge TTS respects these)
+    .replace(/\n{2,}/g, '\n\n');
 
   // Remove duplicate consecutive sentences
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  const unique: string[] = [];
+  const lines = text.split('\n');
+  const processed: string[] = [];
   const seen = new Set<string>();
-  for (const s of sentences) {
-    const normalized = s.trim().toLowerCase();
-    if (normalized && !seen.has(normalized)) {
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      processed.push(''); // Keep empty lines as pauses
+      continue;
+    }
+    const normalized = trimmed.toLowerCase().replace(/[.!?]+$/, '');
+    if (!seen.has(normalized)) {
       seen.add(normalized);
-      unique.push(s.trim());
+      // Ensure each line ends with punctuation for natural pausing
+      const withPunctuation = /[.!?]$/.test(trimmed) ? trimmed : trimmed + '.';
+      processed.push(withPunctuation);
     }
   }
 
-  return unique.join(' ').replace(/\s+/g, ' ').trim();
+  // Join with double newlines for paragraph pauses
+  return processed
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')  // Max 2 newlines (one pause)
+    .replace(/\.{2,}/g, '.')      // No double periods
+    .trim();
 }
 
 export default function TextContent({ data }: TextContentProps) {
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
-      window.speechSynthesis.cancel();
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, []);
 
-  const handleSpeak = () => {
-    const text = prepareForTTS(data.content);
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+  const handleSpeak = async () => {
+    if (isPlaying) return;
 
-    // Try to use a natural-sounding voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v =>
-      v.name.includes('Samantha') || v.name.includes('Google') ||
-      v.name.includes('Natural') || v.name.includes('Enhanced')
-    );
-    if (preferred) utterance.voice = preferred;
+    setIsLoading(true);
+    try {
+      const text = prepareForTTS(data.content);
+      const res = await fetch(`${BACKEND_API_URL}/api/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
 
-    utterance.onend = () => {
-      setIsSpeaking(false);
+      if (!res.ok) throw new Error('TTS failed');
+      const { url } = await res.json();
+
+      const audio = new Audio(`${BACKEND_API_URL}${url}`);
+      audioRef.current = audio;
+
+      audio.onplay = () => { setIsPlaying(true); setIsLoading(false); };
+      audio.onpause = () => setIsPaused(true);
+      audio.onended = () => { setIsPlaying(false); setIsPaused(false); setProgress(0); };
+      audio.ontimeupdate = () => {
+        if (audio.duration) {
+          setProgress((audio.currentTime / audio.duration) * 100);
+        }
+      };
+
+      await audio.play();
       setIsPaused(false);
-      setProgress(0);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
-    setIsPaused(false);
-
-    // Track progress
-    const totalLength = text.length;
-    let elapsed = 0;
-    intervalRef.current = setInterval(() => {
-      elapsed += 100;
-      // Rough estimate: ~150 words/min at 0.95 rate, avg 5 chars/word
-      const charsPerMs = (150 * 5) / 60000 * 0.95;
-      const estimatedPos = elapsed * charsPerMs;
-      setProgress(Math.min((estimatedPos / totalLength) * 100, 99));
-    }, 100);
+    } catch (err) {
+      console.error('TTS error:', err);
+      // Fallback to Web Speech API
+      const text = prepareForTTS(data.content);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.onend = () => { setIsPlaying(false); setIsLoading(false); };
+      window.speechSynthesis.speak(utterance);
+      setIsPlaying(true);
+      setIsLoading(false);
+    }
   };
 
   const handlePause = () => {
+    if (!audioRef.current) return;
     if (isPaused) {
-      window.speechSynthesis.resume();
+      audioRef.current.play();
       setIsPaused(false);
     } else {
-      window.speechSynthesis.pause();
+      audioRef.current.pause();
       setIsPaused(true);
     }
   };
 
   const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
     window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    setIsPlaying(false);
     setIsPaused(false);
     setProgress(0);
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    setIsLoading(false);
   };
 
   return (
@@ -130,7 +163,7 @@ export default function TextContent({ data }: TextContentProps) {
 
         {/* TTS controls */}
         <div className="flex items-center gap-2 mb-6 pb-4 border-b dark:border-gray-700">
-          {!isSpeaking ? (
+          {!isPlaying && !isLoading ? (
             <button
               onClick={handleSpeak}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition"
@@ -138,6 +171,11 @@ export default function TextContent({ data }: TextContentProps) {
               <Volume2 className="h-4 w-4" />
               Read aloud
             </button>
+          ) : isLoading ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-gray-100 dark:bg-gray-700 text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating audio...
+            </div>
           ) : (
             <>
               <button
@@ -154,7 +192,6 @@ export default function TextContent({ data }: TextContentProps) {
                 <VolumeX className="h-4 w-4" />
                 Stop
               </button>
-              {/* Progress bar */}
               <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1 ml-2">
                 <div
                   className="h-full rounded-full bg-blue-500 transition-all duration-200"
@@ -165,7 +202,7 @@ export default function TextContent({ data }: TextContentProps) {
           )}
         </div>
 
-        {/* Content — clean readable typography */}
+        {/* Content */}
         <article className="prose prose-gray dark:prose-invert max-w-none
           prose-headings:font-semibold prose-headings:tracking-tight
           prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-3 prose-h2:text-gray-900 dark:prose-h2:text-gray-100

@@ -4,6 +4,7 @@ import { FileText, Sun, Moon, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import SectionProgressList, { SectionInfo } from './section-progress';
+import KnowledgeGraphMini from './knowledge-graph-mini';
 
 export interface SavedSource {
   id: string;
@@ -18,6 +19,7 @@ interface SidebarProps {
   sections?: SectionInfo[];
   currentSectionId?: string | null;
   onSectionClick?: (sectionId: string) => void;
+  knowledgeGraph?: any;
 }
 
 export default function Sidebar({
@@ -27,6 +29,7 @@ export default function Sidebar({
   sections = [],
   currentSectionId,
   onSectionClick,
+  knowledgeGraph,
 }: SidebarProps) {
   const [isDark, setIsDark] = useState(true);
 
@@ -92,6 +95,14 @@ export default function Sidebar({
           sections={sections}
           currentSectionId={currentSectionId}
           onSectionClick={onSectionClick}
+        />
+      )}
+
+      {/* Knowledge graph concept mastery */}
+      {knowledgeGraph?.concepts && sections.length > 0 && (
+        <KnowledgeGraphMini
+          concepts={knowledgeGraph.concepts}
+          sections={sections}
         />
       )}
 
