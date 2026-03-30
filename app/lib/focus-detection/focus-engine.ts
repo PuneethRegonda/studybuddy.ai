@@ -184,18 +184,9 @@ export class FocusEngine {
    * Main processing loop — wrapped in try/catch to prevent
    * errors from bubbling to React error overlay during initialization
    */
-  private processFrame = (): void => {
-    try {
-      this.processFrameInner();
-    } catch {
-      // Silently retry on next frame
-      if (this.isRunning) {
-        this.animationFrameId = requestAnimationFrame(this.processFrame);
-      }
-    }
-  };
+  private mediapipeReady = false;
 
-  private processFrameInner(): void {
+  private processFrame = (): void => {
     if (!this.isRunning || !this.faceLandmarker || !this.videoElement) return;
 
     const now = Date.now();
@@ -218,22 +209,17 @@ export class FocusEngine {
         return;
       }
 
-      let result;
-      try {
-        result = this.faceLandmarker!.detectForVideo(
-          this.videoElement!,
-          now
-        );
-      } catch {
-        // MediaPipe throws on first few frames before fully initialized — skip silently
-        this.animationFrameId = requestAnimationFrame(this.processFrame);
-        return;
+      // Skip first 2 seconds of frames to let MediaPipe fully initialize
+      if (!this.mediapipeReady) {
+        if (now - this.lastFaceSeenTime > 2000) {
+          this.mediapipeReady = true;
+        } else {
+          this.animationFrameId = requestAnimationFrame(this.processFrame);
+          return;
+        }
       }
 
-      if (!result) {
-        this.animationFrameId = requestAnimationFrame(this.processFrame);
-        return;
-      }
+      const result = this.faceLandmarker!.detectForVideo(this.videoElement!, now);
 
       if (result.faceLandmarks && result.faceLandmarks.length > 0) {
         const landmarks = result.faceLandmarks[0];
