@@ -10,6 +10,7 @@ interface TextContentProps {
     title?: string;
     content: string;
   };
+  onSectionDone?: () => void;
 }
 
 function cleanMarkdown(content: string): string {
@@ -69,7 +70,7 @@ function prepareForTTS(content: string): string {
     .trim();
 }
 
-export default function TextContent({ data }: TextContentProps) {
+export default function TextContent({ data, onSectionDone }: TextContentProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -216,6 +217,21 @@ export default function TextContent({ data }: TextContentProps) {
         ">
           <ReactMarkdown>{cleanMarkdown(data.content)}</ReactMarkdown>
         </article>
+
+        {/* Section done button */}
+        {onSectionDone && (
+          <div className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-center">
+            <button
+              onClick={onSectionDone}
+              className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Done with this section
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
