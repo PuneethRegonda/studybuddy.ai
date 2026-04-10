@@ -297,6 +297,31 @@ export default function Dashboard() {
     }
   }, [documentId, currentSectionId]);
 
+  // Handle "Done with this section" click
+  const handleSectionDone = useCallback(() => {
+    if (!documentId || !currentSectionId) return;
+
+    // Mark as read
+    updateSectionProgress(documentId, currentSectionId, 'read').catch(() => {});
+    setSections(prev => prev.map(s =>
+      s.id === currentSectionId ? { ...s, status: 'read' } : s
+    ));
+
+    // Agent suggests next step
+    const currentIdx = sectionsDataRef.current.findIndex((s: any) => s.id === currentSectionId);
+    const next = sectionsDataRef.current[currentIdx + 1];
+
+    setAgentMessage({
+      message: next
+        ? `Section done! Want a quick quiz to lock it in, or move to "${next.title}"?`
+        : 'Last section done! Take a quiz to test your understanding.',
+      buttons: [
+        { label: 'Take quiz', action: 'switch_content', content_type: 'quiz' },
+        ...(next ? [{ label: `Next: ${next.title}`, action: 'start_section', section_id: next.id }] : []),
+      ],
+    });
+  }, [documentId, currentSectionId]);
+
   // Handle agent card button clicks
   const handleAgentAction = useCallback((action: string, data?: Record<string, string>) => {
     setAgentMessage(null);
@@ -424,6 +449,7 @@ export default function Dashboard() {
           onUpload={() => setShowModal(true)}
           onContentTypeRequest={handleContentTypeRequest}
           onQuizComplete={handleQuizComplete}
+          onSectionDone={handleSectionDone}
         />
 
         {/* Absence bar */}
