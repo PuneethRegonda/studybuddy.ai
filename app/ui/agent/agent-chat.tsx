@@ -14,9 +14,10 @@ interface AgentChatProps {
   context: AgentContext;
   sessionId: string | null;
   isVisible: boolean;
+  onCommand?: (command: string) => void;
 }
 
-export default function AgentChat({ context, sessionId, isVisible }: AgentChatProps) {
+export default function AgentChat({ context, sessionId, isVisible, onCommand }: AgentChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -48,20 +49,47 @@ export default function AgentChat({ context, sessionId, isVisible }: AgentChatPr
     const userMessage = input.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setIsLoading(true);
 
+    // Check for quick commands
+    const lower = userMessage.toLowerCase();
+    if (lower.match(/^(quiz|test)\s*me/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Generating a quiz for you...' }]);
+      onCommand?.('quiz');
+      return;
+    }
+    if (lower.match(/^(flash\s*cards?|show\s*cards)/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Generating flashcards...' }]);
+      onCommand?.('flipcard');
+      return;
+    }
+    if (lower.match(/^(next\s*section|move\s*on|continue)/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Moving to the next section.' }]);
+      onCommand?.('next_section');
+      return;
+    }
+    if (lower.match(/^(mind\s*map|visual)/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Generating a mind map...' }]);
+      onCommand?.('mindmap');
+      return;
+    }
+    if (lower.match(/^(game|play)/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Starting a matching game...' }]);
+      onCommand?.('mini-game');
+      return;
+    }
+    if (lower.match(/^(read\s*aloud|speak|audio)/i)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Starting read aloud. Check the reading view.' }]);
+      onCommand?.('read_aloud');
+      return;
+    }
+
+    // Regular chat — send to LLM
+    setIsLoading(true);
     try {
       const result = await chatWithAgent(userMessage, sessionId, context);
-
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: result.response },
-      ]);
-    } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: 'Sorry, I had trouble responding. Try again.' },
-      ]);
+      setMessages(prev => [...prev, { role: 'assistant', content: result.response }]);
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I had trouble responding. Try again.' }]);
     } finally {
       setIsLoading(false);
     }
@@ -165,8 +193,25 @@ export default function AgentChat({ context, sessionId, isVisible }: AgentChatPr
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
+      {/* Quick actions + Input */}
       <div className="p-3 border-t dark:border-gray-700">
+        {/* Quick action chips */}
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {[
+            { label: 'Quiz me', cmd: 'quiz' },
+            { label: 'Flashcards', cmd: 'flipcard' },
+            { label: 'Mind map', cmd: 'mindmap' },
+            { label: 'Next section', cmd: 'next_section' },
+          ].map(chip => (
+            <button
+              key={chip.cmd}
+              onClick={() => { onCommand?.(chip.cmd); setMessages(prev => [...prev, { role: 'user', content: chip.label }, { role: 'assistant', content: `Loading ${chip.label.toLowerCase()}...` }]); }}
+              className="px-2.5 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 transition"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
           <input
             type="text"
