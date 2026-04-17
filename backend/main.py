@@ -500,6 +500,29 @@ def list_documents():
     })
 
 
+@app.route("/api/documents/<doc_id>/rename", methods=["POST"])
+def rename_document(doc_id):
+    """Rename a document."""
+    try:
+        data = request.get_json()
+        new_name = data.get("name", "").strip()
+        if not new_name:
+            return jsonify({"error": "Name cannot be empty"}), 400
+
+        db = SessionLocal()
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            db.close()
+            return jsonify({"error": "Document not found"}), 404
+
+        doc.filename = new_name
+        db.commit()
+        db.close()
+        return jsonify({"ok": True, "name": new_name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/documents/latest", methods=["GET"])
 def get_latest_document():
     """Get the most recent document with its summary."""
