@@ -118,9 +118,9 @@ export default function Sidebar({
                     </button>
                   </div>
                 ) : (
-                  <button
+                  <div
                     onClick={() => onSourceClick?.(source.id)}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition text-sm ${
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition text-sm cursor-pointer ${
                       source.isActive
                         ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
                         : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
@@ -129,13 +129,13 @@ export default function Sidebar({
                     <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${source.isActive ? 'text-blue-500' : 'text-gray-400'}`} />
                     <span className="truncate text-xs flex-1">{source.filename.replace(/\.[^.]+$/, '')}</span>
                     {source.isActive && <CheckCircle className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                    <button
+                    <span
                       onClick={(e) => { e.stopPropagation(); startRename(source); }}
-                      className="hidden group-hover:block p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+                      className="hidden group-hover:inline-block p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 cursor-pointer"
                     >
                       <Pencil className="h-3 w-3" />
-                    </button>
-                  </button>
+                    </span>
+                  </div>
                 )}
               </div>
             ))}

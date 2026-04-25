@@ -17,16 +17,25 @@ interface KnowledgeGraphMiniProps {
 }
 
 function getConceptMastery(conceptId: string, sections: SectionInfo[]): string {
-  // A concept is mastered if any section covering it is mastered
-  for (const s of sections) {
-    if (s.status === 'mastered' || s.status === 'tested') {
-      return 'mastered';
-    }
+  // Find sections that cover this concept
+  const coveringSections = sections.filter(s =>
+    s.concepts && s.concepts.some(c =>
+      c === conceptId || c.toLowerCase() === conceptId.toLowerCase()
+    )
+  );
+
+  if (coveringSections.length === 0) {
+    // Concept not linked to any section — check by name similarity
+    return 'not_started';
   }
-  for (const s of sections) {
-    if (s.status === 'read' || s.status === 'in_progress') {
-      return 'in_progress';
-    }
+
+  // If any covering section is mastered/tested, concept is mastered
+  if (coveringSections.some(s => s.status === 'mastered' || s.status === 'tested')) {
+    return 'mastered';
+  }
+  // If any is read or in progress
+  if (coveringSections.some(s => s.status === 'read' || s.status === 'in_progress')) {
+    return 'in_progress';
   }
   return 'not_started';
 }
@@ -50,10 +59,12 @@ function getMasteryRing(mastery: string): string {
 export default function KnowledgeGraphMini({ concepts, sections }: KnowledgeGraphMiniProps) {
   if (!concepts || concepts.length === 0) return null;
 
-  const mastered = concepts.filter((_, i) => {
-    const mastery = getConceptMastery(concepts[i].id, sections);
-    return mastery === 'mastered';
-  }).length;
+  const masteryMap = concepts.map(c => ({
+    ...c,
+    mastery: getConceptMastery(c.id, sections),
+  }));
+
+  const mastered = masteryMap.filter(c => c.mastery === 'mastered').length;
 
   return (
     <div className="mt-4">
@@ -62,37 +73,30 @@ export default function KnowledgeGraphMini({ concepts, sections }: KnowledgeGrap
         <span className="text-xs text-gray-400 dark:text-gray-500">{mastered}/{concepts.length}</span>
       </div>
 
-      {/* Concept grid — small dots showing mastery */}
+      {/* Concept grid */}
       <div className="flex flex-wrap gap-1.5">
-        {concepts
+        {masteryMap
           .sort((a, b) => b.importance - a.importance)
-          .map((concept) => {
-            const mastery = getConceptMastery(concept.id, sections);
-            return (
+          .map((concept) => (
+            <div key={concept.id} className="group relative">
               <div
-                key={concept.id}
-                className={`group relative`}
-                title={`${concept.name}: ${concept.description}`}
-              >
-                <div
-                  className={`w-3 h-3 rounded-full ${getMasteryColor(mastery)} ring-1 ${getMasteryRing(mastery)} cursor-default transition-transform hover:scale-150`}
-                />
-                {/* Tooltip on hover */}
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="bg-gray-900 text-white text-xs rounded-md px-2 py-1 whitespace-nowrap shadow-lg">
-                    {concept.name}
-                  </div>
+                className={`w-3 h-3 rounded-full ${getMasteryColor(concept.mastery)} ring-1 ${getMasteryRing(concept.mastery)} cursor-default transition-transform hover:scale-150`}
+              />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
+                <div className="bg-gray-900 text-white text-xs rounded-md px-2 py-1 whitespace-nowrap shadow-lg">
+                  {concept.name}
+                  {concept.mastery === 'mastered' && ' ✓'}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
       </div>
 
       {/* Legend */}
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded-full bg-green-500" />
-          <span>Mastered</span>
+          <span>Done</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded-full bg-amber-500" />
