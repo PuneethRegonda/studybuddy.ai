@@ -7,6 +7,7 @@ import StudioPanel from '@/app/ui/studio-panel/studio-panel';
 import UploadSourcesModal from '@/app/ui/modal/upload-source-modal';
 import MainDisplay from '@/app/ui/main-display/main-display';
 import AgentCard from '@/app/ui/agent/agent-card';
+import AgentChat from '@/app/ui/agent/agent-chat';
 import BreakScreen from '@/app/ui/break-screen';
 import { predictFocus, ActivityTracker } from '@/app/lib/focus-detection';
 import { sendFile } from '@/app/services/send-file';
@@ -403,6 +404,11 @@ export default function Dashboard() {
     }
   }, [contentLoaded, documentId, currentSectionId, currentContentType, agentMessage]);
 
+  // Source rename
+  const handleSourceRenamed = useCallback((id: string, newName: string) => {
+    setSources(prev => prev.map(s => s.id === id ? { ...s, filename: newName } : s));
+  }, []);
+
   // Absence
   const handleAbsenceStart = useCallback(() => setIsAbsent(true), []);
   const handleAbsenceEnd = useCallback(() => {
@@ -413,6 +419,24 @@ export default function Dashboard() {
         .catch(() => {});
     }
   }, [documentId, currentSectionId, currentSectionTitle]);
+
+  // Chat command handler
+  const handleChatCommand = useCallback((command: string) => {
+    switch (command) {
+      case 'quiz':
+      case 'flipcard':
+      case 'mindmap':
+      case 'mini-game':
+        handleContentTypeRequest(command);
+        break;
+      case 'next_section': {
+        const idx = sectionsDataRef.current.findIndex((s: any) => s.id === currentSectionId);
+        const next = sectionsDataRef.current[idx + 1];
+        if (next) loadSection(next.id);
+        break;
+      }
+    }
+  }, [handleContentTypeRequest, currentSectionId, loadSection]);
 
   // Section click in sidebar
   const handleSectionClick = useCallback((sectionId: string) => {
@@ -426,6 +450,7 @@ export default function Dashboard() {
         onAddClick={() => setShowModal(true)}
         sources={sources}
         onSourceClick={(id) => loadDocument(id)}
+        onSourceRenamed={handleSourceRenamed}
         sections={sections}
         currentSectionId={currentSectionId}
         onSectionClick={handleSectionClick}
@@ -557,6 +582,22 @@ export default function Dashboard() {
           handleFileUpload={handleFileUpload}
         />
       )}
+
+      {/* Agent Chat — floating bottom-left, offset from studio */}
+      <AgentChat
+        isVisible={contentLoaded}
+        sessionId={sessionId}
+        context={{
+          documentTitle: currentSectionTitle,
+          summaryText: summaryTextRef.current,
+          focusScore,
+          contentType: currentContentType,
+          distractionCount: 0,
+          sessionDurationMin: 0,
+          knowledgeGraph,
+        }}
+        onCommand={handleChatCommand}
+      />
     </div>
   );
 }
