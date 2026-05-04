@@ -92,8 +92,8 @@ Return ONLY valid JSON in this exact format:
 }
 
 Rules:
-- Break the document into 4-10 logical sections based on topics
-- Each section should be 2-5 minutes of reading
+- IMPORTANT: Scale sections to document size. Short documents (1-3 pages) get 2-3 sections max. Medium (4-10 pages) get 3-5 sections. Long (10+ pages) get 5-8 sections. Never create more sections than makes sense for the content.
+- Each section should be substantial — at least 3-5 minutes of reading. Don't split thin topics into separate sections.
 - Content should be detailed enough to study from, not just a summary
 - If there are diagrams or images, describe what they show
 - Concepts should use kebab-case IDs
@@ -182,7 +182,7 @@ Return ONLY valid JSON in this format:
   }}
 }}
 
-Break into 4-10 sections. Use kebab-case for concept IDs."""
+Scale sections to content length: short text gets 2-3 sections, medium gets 3-5, long gets 5-8. Each section should be substantial. Use kebab-case for concept IDs."""
 
     message = client.messages.create(
         model=MODEL,

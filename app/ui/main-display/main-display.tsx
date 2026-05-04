@@ -20,6 +20,7 @@ interface MainDisplayProps {
   onUpload?: () => void;
   onContentTypeRequest?: (type: string) => void;
   onQuizComplete?: (score: number, total: number) => void;
+  onSectionDone?: () => void;
 }
 
 const CONTENT_TABS = [
@@ -36,6 +37,7 @@ export default function MainDisplay({
   onUpload,
   onContentTypeRequest,
   onQuizComplete,
+  onSectionDone,
 }: MainDisplayProps) {
   const [activeTab, setActiveTab] = useState<string>('text');
 
@@ -57,7 +59,7 @@ export default function MainDisplay({
 
     switch (contentData.type) {
       case 'text':
-        return <TextContent data={contentData.data} />;
+        return <TextContent data={contentData.data} onSectionDone={onSectionDone} />;
       case 'flipcard':
         return <FlipCardContent data={contentData.data} />;
       case 'mindmap':
