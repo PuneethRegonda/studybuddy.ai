@@ -209,9 +209,9 @@ export class FocusEngine {
         return;
       }
 
-      // Skip first 2 seconds of frames to let MediaPipe fully initialize
+      // Skip first 3 seconds of frames to let MediaPipe fully initialize
       if (!this.mediapipeReady) {
-        if (now - this.lastFaceSeenTime > 2000) {
+        if (now - this.lastFaceSeenTime > 3000) {
           this.mediapipeReady = true;
         } else {
           this.animationFrameId = requestAnimationFrame(this.processFrame);
@@ -219,9 +219,11 @@ export class FocusEngine {
         }
       }
 
-      const result = this.faceLandmarker!.detectForVideo(this.videoElement!, now);
+      // Call detectForVideo — wrapped to prevent Next.js dev overlay from catching init errors
+      let result: any;
+      try { result = this.faceLandmarker!.detectForVideo(this.videoElement!, now); } catch { /* skip */ }
 
-      if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+      if (result?.faceLandmarks && result.faceLandmarks.length > 0) {
         const landmarks = result.faceLandmarks[0];
         this.handleFaceDetected(landmarks, now);
       } else {

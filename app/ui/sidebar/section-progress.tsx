@@ -8,6 +8,7 @@ export interface SectionInfo {
   order: number;
   status: string; // not_started, in_progress, read, tested, mastered
   quiz_score?: number | null;
+  concepts?: string[];
 }
 
 interface SectionProgressProps {

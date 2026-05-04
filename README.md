@@ -1,188 +1,178 @@
-# 📚 StudyBuddy.AI — Your Adaptive AI-Powered Study Companion
+# StudyBuddy.AI — Adaptive Learning Assistant
 
-![Next.js](https://img.shields.io/badge/Next.js-13+-black?logo=nextdotjs)
-![Flask](https://img.shields.io/badge/Flask-2.3+-lightgrey?logo=flask)
-![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.0+-06B6D4?logo=tailwindcss)
-![License](https://img.shields.io/badge/license-MIT-green)
+An attention-aware adaptive learning platform that combines real-time focus tracking with AI-driven content generation to deliver personalized study sessions.
 
-> A real-time, focus-aware learning platform that adapts to your attention using AI, computer vision, and adaptive UX design.
+## What It Does
 
----
+**Upload any PDF, text, or markdown** — the system breaks it into structured study sections, extracts a knowledge graph of concepts and prerequisites, and guides you through the material with an AI agent.
 
-## 🌟 Inspiration
-Traditional study tools are one-size-fits-all — you read text, flip flashcards, and hope your attention doesn’t fade.  
-We built a **study companion** that adapts to *you* in real time — summarizing content, tracking attention, and seamlessly switching between learning modes like quizzes, flashcards, mind maps, or audio narration when needed.
+**Real-time focus tracking** runs entirely in your browser using MediaPipe FaceMesh (WebAssembly). It computes Eye Aspect Ratio (EAR), gaze direction, blink rate, and head pose to produce a composite focus score. No video frames ever leave your device.
 
----
+**Adaptive content switching** — when your focus drops, the agent suggests switching formats:
+- Text reading with natural TTS (Edge TTS neural voices)
+- Flashcards focused on key definitions and terminology
+- Quizzes testing understanding and application
+- Mind maps showing concept relationships
+- Drag-and-drop matching games
 
-## 🧠 What It Does
+**Section-based progress tracking** — each section tracks mastery (not started → reading → read → tested → mastered). Quiz results update concept mastery. The knowledge graph visualization shows which concepts you've learned.
 
-### 📄 Upload & Summarize
-Drop in a PDF or document — the backend uses **Google Gemini API** to generate a clean, Markdown-formatted summary.
+**Distraction recovery** — when you leave the screen, the system detects it via face absence and tab visibility. When you return, the agent tells you where you left off. One click to continue.
 
-### 🎯 Real-Time Focus Tracking
-Your webcam stream is processed locally via **MediaPipe FaceMesh** to calculate **Eye Aspect Ratio (EAR)** and output a normalized **focus score (0–100)** in real time, streamed via **Flask-SocketIO**.
+## Architecture
 
-### ⚡ Adaptive Learning Modes
-When focus changes, the app dynamically shifts to keep engagement high:
-- 🧩 **Flashcards** for quick recall  
-- 🧠 **Quizzes** to test comprehension  
-- 🕸️ **Mind-Maps** for visual learning  
-- 🎮 **Mini-Games** for micro-engagement  
-- 🔊 **Audio Narration** using browser TTS  
-- 🕒 **Break Reminders** when fatigue is detected  
+```
+Browser (Next.js 15)
+├── Focus Detection Engine (MediaPipe WASM)
+│   ├── EAR computation
+│   ├── Gaze direction (iris landmarks)
+│   ├── Blink rate detection
+│   ├── Head pose estimation
+│   ├── Composite score with EMA smoothing
+│   └── Focus predictor (linear regression, 30s lookahead)
+├── Adaptive State Machine
+│   ├── States: READING → VISUAL → RECALL → TESTING → GAME → BREAK
+│   ├── Anti-thrashing (min dwell time, cooldown, max transitions)
+│   └── Effectiveness memory (learns which transitions work)
+├── Activity Tracker
+│   ├── Tab visibility (document.visibilityState)
+│   └── Inactivity detection (no scroll/click for 60s)
+└── UI Components
+    ├── Section progress sidebar
+    ├── Content type tabs
+    ├── Agent inline cards
+    ├── Chat with quick action commands
+    ├── Knowledge graph concept dots
+    ├── Floating camera widget (minimizable)
+    └── Break screen with breathing timer
 
----
+Backend (Flask + SQLite)
+├── Document Processor
+│   ├── PDF → Claude Vision API (reads images, diagrams, text)
+│   ├── Text/MD → Claude text API
+│   └── Splits into structured sections with concepts
+├── Agent Decision Engine (deterministic, no LLM)
+│   ├── Welcome/resume decisions
+│   ├── Focus drop suggestions
+│   ├── Section completion flow
+│   ├── Quiz result handling
+│   └── Prerequisite checking
+├── Content Generation (cached per section)
+│   ├── Flashcards (terminology-focused prompts)
+│   ├── Quizzes (understanding/application prompts)
+│   ├── Mind maps
+│   └── Mini-games
+├── Knowledge Graph Extraction
+├── TTS (Edge TTS neural voices)
+├── Session Analytics
+└── Agent Chat (LLM-backed for free-form questions)
+```
 
-## 🏗️ How We Built It
+## Tech Stack
 
-**Frontend**
-- ⚛️ Next.js + React  
-- 🎨 Tailwind CSS  
-- ⚡ Socket.IO-client  
-- 🗣️ Web Speech API (browser-based TTS)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 |
+| UI Components | shadcn/ui, ReactFlow, Recharts, Framer Motion |
+| Focus Detection | MediaPipe Face Mesh (WASM), Web Workers |
+| Backend | Python, Flask, SQLAlchemy |
+| Database | SQLite (documents, sections, progress, sessions, focus events, chat) |
+| LLM | Anthropic Claude API (Sonnet) |
+| TTS | Edge TTS (Microsoft neural voices) |
+| PDF Processing | Claude Vision API (multimodal) |
 
-**Backend**
-- 🧩 Flask + Flask-SocketIO  
-- 👁️ MediaPipe FaceMesh  
-- 🤖 Google Gemini API for summarization & quiz generation  
-- 🔉 Google Cloud Text-to-Speech (optional backend route)
+## Getting Started
 
-**Infra & Tools**
-- 🐍 Python 3.10  
-- 🧰 Git, dotenv  
-- 💻 Works on macOS, Windows, and Linux
+### Prerequisites
+- Node.js 18+
+- Python 3.9+
 
----
+### Frontend
 
-## 🧩 Challenges We Faced
-
-- 🔐 **Privacy-Preserving Focus Tracking** – All webcam data is processed locally; no cloud uploads.  
-- ⚙️ **Cross-Platform Compatibility** – Managed MediaPipe/OpenCV issues across Intel and Apple Silicon.  
-- 👁️ **Robust Focus Detection** – Tuned EAR thresholds for varying lighting, face angles, and distances.  
-- 🔄 **Real-Time Integration** – Aligned Flask, Eventlet, and Socket.IO for smooth streaming without frame drops.  
-- 🧠 **Adaptive UX Logic** – Balanced how and when to prompt learning mode switches.
-
----
-
-## 🏆 Accomplishments
-
-✅ Reliable Focus Detection Pipeline  
-✅ Real-Time Flask-SocketIO Integration  
-✅ Modular Flashcards, Quizzes & Mind-Maps  
-✅ Audio Narration via Web Speech API  
-✅ Intuitive Next.js/Tailwind UI  
-✅ Cross-Platform Setup (venv or Docker)
-
----
-
-## 💡 What We Learned
-
-- Precise dependency management for computer-vision systems.  
-- Socket.IO event-driven architecture mastery.  
-- Prompt engineering for clean, consistent AI outputs.  
-- Browser APIs can drastically simplify pipelines.  
-- Adaptive UX must balance intervention timing and tone.
-
----
-
-## 🔮 What’s Next
-
-- 📊 **Analytics Dashboard** for long-term focus and spaced-repetition trends  
-- 👥 **Collaborative Study Rooms** with shared focus metrics  
-- 📱 **Offline PWA / Mobile App**  
-- 😌 **Emotion & Posture Detection** for richer engagement  
-- 🎓 **Personalized Learning Paths** powered by ML
-
----
-
-## 🧰 Built With
-
-| Category | Technologies |
-|-----------|---------------|
-| Frontend | Next.js, React, Tailwind CSS, Web Speech API |
-| Backend | Flask, Flask-SocketIO, MediaPipe FaceMesh |
-| AI & APIs | Google Gemini, Google Cloud TTS |
-| Infra | Python 3.10, Git, dotenv |
-
----
-
-## ⚙️ Getting Started
-
-### 🧩 Prerequisites
-Install:
-- [Node.js](https://nodejs.org/) (v18+)
-- [Python 3.10](https://www.python.org/downloads/)
-- `pip` and `virtualenv`
-
----
-
-### 💻 Frontend Setup (Next.js)
-
-Clone and install dependencies:
 ```bash
-git clone https://github.com/<your-username>/StudyBuddyAI.git
-cd StudyBuddyAI
+cd studybuddy.ai
 npm install
-```
-
-Run the development server:
-```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open:
-- http://localhost:3000
+Opens at http://localhost:3000
 
-Edit the landing page by modifying `app/page.tsx`. The page auto-updates as you edit.  
-> This project uses **next/font** to automatically optimize and load **Geist**, a new Vercel font family.
+### Backend
 
----
-
-### 🐍 Backend Setup (Flask)
-
-Create and activate a virtual environment:
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+cd backend
+pip3 install -r requirements.txt
 ```
 
-Install dependencies:
+Create `backend/.env`:
+```
+ANTHROPIC_API_KEY=your_api_key_here
+```
+
 ```bash
-pip install -r requirements.txt
+python3 main.py
 ```
 
-Run the Flask server:
-```bash
-python app.py
+Runs at http://localhost:5001
+
+### Usage
+
+1. Open http://localhost:3000
+2. Click **+ Add Source** and upload a PDF
+3. The system processes it into sections — the agent welcomes you
+4. Read the first section, click **Done with this section**
+5. The agent suggests a quiz or next section
+6. Camera starts automatically — focus tracking runs in background
+7. If focus drops, the agent suggests switching content format
+8. Chat with the assistant using quick commands: "quiz me", "flashcards", "next section"
+
+## Database Schema
+
+```
+documents          — uploaded files with summaries and knowledge graphs
+document_sections  — structured sections with concepts and prerequisites
+section_progress   — per-section mastery tracking
+sessions           — study sessions with timestamps
+focus_events       — focus score time series
+quiz_attempts      — quiz answers with correctness
+content_transitions — content format switches with focus before/after
+distraction_events — absence durations
+generated_content  — cached flashcards/quizzes/mindmaps per section
+chat_messages      — agent conversation history per session
 ```
 
-The backend runs at: `http://127.0.0.1:5000` and streams focus data via Socket.IO.
+## Project Structure
 
----
-
-### 🔧 Environment Variables
-
-Create a `.env` in the project root:
 ```
-GEMINI_API_KEY=your_google_gemini_api_key
-GOOGLE_APPLICATION_CREDENTIALS=path_to_tts_credentials.json
+app/
+  dashboard/          — main dashboard page + view
+  lib/
+    focus-detection/  — MediaPipe engine, signal processor, predictor, activity tracker
+    adaptive-engine/  — state machine, types, React hook
+  services/           — API clients (content, session, agent)
+  ui/
+    agent/            — inline agent card + chat
+    main-display/     — content renderers (text, quiz, flashcard, mindmap, game)
+    modal/            — upload modal
+    sidebar/          — sources, section progress, knowledge graph
+    studio-panel/     — camera feed, focus display, focus chart
+    session/          — session report
+backend/
+  main.py             — all API endpoints
+  database.py         — SQLAlchemy models
+  document_processor.py — PDF/text sectioning via Claude
+  agent_engine.py     — deterministic decision engine
+  knowledge_graph.py  — concept extraction
+  study_agent.py      — LLM chat agent
+plans/                — architecture docs and roadmap
 ```
 
----
+## Authors
 
-## 💬 Authors
-**Team StudyBuddy.AI** — Built with ❤️ in San Jose, CA.
+**Team StudyBuddy.AI** — Mahesh Cheekuri, Puneeth Regonda, Siri Chandana Uppula, Sunil Vurandur
 
----
+San Jose State University, MS Software Engineering, May 2026
 
-## 🪪 License
-This project is licensed under the **MIT License** — see the `LICENSE` file for details.
+## License
 
+MIT License — see `LICENSE` for details.

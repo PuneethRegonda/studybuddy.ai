@@ -104,7 +104,7 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand }: 
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-[340px] z-50">
+      <div className="fixed bottom-4 right-[240px] z-40">
         <button
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition"
@@ -122,7 +122,7 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand }: 
   }
 
   return (
-    <div className="fixed bottom-4 right-[340px] w-96 h-[500px] bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl flex flex-col z-[60]">
+    <div className="fixed bottom-4 right-[240px] w-96 h-[500px] bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl flex flex-col z-[60]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
         <div className="flex items-center gap-2">

@@ -30,6 +30,38 @@ import {
   agentDistractionReturn,
 } from '@/app/services/agentService';
 
+function MiniCameraPreview() {
+  const miniVideoRef = useRef<HTMLVideoElement>(null);
+  const hasConnected = useRef(false);
+
+  useEffect(() => {
+    if (hasConnected.current) return;
+
+    const connect = () => {
+      const mainVideo = document.querySelector('.studio-video') as HTMLVideoElement;
+      if (mainVideo?.srcObject && miniVideoRef.current) {
+        miniVideoRef.current.srcObject = mainVideo.srcObject;
+        hasConnected.current = true;
+      }
+    };
+
+    // Try immediately, then retry after a short delay
+    connect();
+    const timer = setTimeout(connect, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <video
+      ref={miniVideoRef}
+      autoPlay
+      muted
+      playsInline
+      className="w-full h-full object-cover"
+    />
+  );
+}
+
 interface ContentData {
   type: string;
   data: any;
@@ -92,7 +124,7 @@ export default function Dashboard() {
 
       setSections(secs.map((s: any) => ({
         id: s.id, title: s.title, order: s.order,
-        status: s.status, quiz_score: s.quiz_score,
+        status: s.status, quiz_score: s.quiz_score, concepts: s.concepts || [],
       })));
       sectionsDataRef.current = secs;
 
@@ -524,28 +556,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Floating widget when minimized — shows camera + focus */}
+          {/* Floating widget when minimized — camera + focus stacked above chat */}
           {studioMinimized && (
-            <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right duration-300">
-              <div className="bg-gray-900 rounded-2xl shadow-2xl border border-gray-700/50 overflow-hidden w-64">
-                {/* Mini camera preview */}
+            <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 animate-in slide-in-from-right duration-300">
+              {/* Camera widget */}
+              <div className="bg-gray-900 rounded-2xl shadow-2xl border border-gray-700/50 overflow-hidden w-56">
                 <div className="relative w-full aspect-[16/9] bg-black">
-                  <video
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full h-full object-cover"
-                    ref={(el) => {
-                      // Mirror the main studio panel's video
-                      if (el) {
-                        const mainVideo = document.querySelector('.studio-video') as HTMLVideoElement;
-                        if (mainVideo?.srcObject) {
-                          el.srcObject = mainVideo.srcObject;
-                        }
-                      }
-                    }}
-                  />
-                  {/* Focus score overlay */}
+                  <MiniCameraPreview />
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -554,22 +571,15 @@ export default function Dashboard() {
                         }`} />
                         <span className="text-white text-xs font-semibold">{focusScore}%</span>
                       </div>
-                      <span className="text-gray-400 text-xs">
-                        {focusScore > 60 ? 'Focused' : focusScore > 30 ? 'Drifting' : 'Low'}
-                      </span>
+                      <button
+                        onClick={() => setStudioMinimized(false)}
+                        className="text-gray-400 hover:text-white text-xs transition"
+                      >
+                        Expand
+                      </button>
                     </div>
                   </div>
                 </div>
-                {/* Expand button */}
-                <button
-                  onClick={() => setStudioMinimized(false)}
-                  className="w-full py-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition flex items-center justify-center gap-1"
-                >
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7" />
-                  </svg>
-                  Expand studio
-                </button>
               </div>
             </div>
           )}
