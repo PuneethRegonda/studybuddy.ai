@@ -43,7 +43,7 @@ if (!isValidQuizData) {
           <h2 className="text-xl font-bold text-red-500 mb-2">
             Invalid Quiz Data
           </h2>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-400">
             The quiz content couldn't be loaded properly.
           </p>
         </div>
@@ -267,13 +267,13 @@ if (!isValidQuizData) {
                   !hasAnswered
                     ? selectedOptions[currentQuestionIndex] === idx
                       ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'
                     : idx === currentQuestion.correctOptionIndex
                     ? 'bg-green-100 border-green-500'
                     : selectedOptions[currentQuestionIndex] === idx &&
                       idx !== currentQuestion.correctOptionIndex
                     ? 'bg-red-100 border-red-500'
-                    : 'border-gray-200'
+                    : 'border-gray-200 dark:border-gray-600'
                 }`}
               >
                 <div className="flex items-center">

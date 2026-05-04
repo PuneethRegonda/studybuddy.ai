@@ -14,12 +14,44 @@ class Document(Base):
 
     id = Column(String, primary_key=True)
     filename = Column(String, nullable=False)
-    summary = Column(Text)
-    concepts = Column(JSON)  # List of extracted concepts
-    knowledge_graph = Column(JSON)  # Nodes + edges
+    summary = Column(Text)  # Full document summary (kept for agent context)
+    concepts = Column(JSON)
+    knowledge_graph = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("StudySession", back_populates="document")
+    sections = relationship("DocumentSection", back_populates="document", order_by="DocumentSection.section_order")
+
+
+class DocumentSection(Base):
+    __tablename__ = "document_sections"
+
+    id = Column(String, primary_key=True)
+    document_id = Column(String, ForeignKey("documents.id"))
+    title = Column(String)
+    content = Column(Text)  # Markdown content for this section
+    concepts = Column(JSON)  # Concept IDs covered
+    prerequisites = Column(JSON)  # Section IDs or concept IDs needed first
+    section_order = Column(Integer)
+    estimated_read_min = Column(Float, default=3)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    document = relationship("Document", back_populates="sections")
+    progress = relationship("SectionProgress", back_populates="section")
+
+
+class SectionProgress(Base):
+    __tablename__ = "section_progress"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(String, ForeignKey("documents.id"))
+    section_id = Column(String, ForeignKey("document_sections.id"))
+    status = Column(String, default="not_started")  # not_started, in_progress, read, tested, mastered
+    quiz_score = Column(Float, nullable=True)
+    time_spent_sec = Column(Float, default=0)
+    last_accessed = Column(DateTime, nullable=True)
+
+    section = relationship("DocumentSection", back_populates="progress")
 
 
 class StudySession(Base):
@@ -27,13 +59,14 @@ class StudySession(Base):
 
     id = Column(String, primary_key=True)
     document_id = Column(String, ForeignKey("documents.id"))
+    current_section_id = Column(String, nullable=True)  # Where the student is right now
     started_at = Column(DateTime, default=datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
     total_focus_time_sec = Column(Float, default=0)
     avg_focus_score = Column(Float, default=0)
     distraction_count = Column(Integer, default=0)
     content_switches = Column(Integer, default=0)
-    session_summary = Column(JSON)  # Post-session report
+    session_summary = Column(JSON)
 
     document = relationship("Document", back_populates="sessions")
     focus_events = relationship("FocusEvent", back_populates="session")
@@ -50,6 +83,7 @@ class FocusEvent(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     focus_score = Column(Float)
     content_type = Column(String)
+    section_id = Column(String, nullable=True)
 
     session = relationship("StudySession", back_populates="focus_events")
 
@@ -59,9 +93,10 @@ class QuizAttempt(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, ForeignKey("sessions.id"))
+    section_id = Column(String, nullable=True)
     question_text = Column(Text)
     user_answer = Column(String)
-    is_correct = Column(Integer)  # 0 or 1
+    is_correct = Column(Integer)
     time_spent_ms = Column(Integer)
     concept = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -95,12 +130,23 @@ class DistractionEvent(Base):
     session = relationship("StudySession", back_populates="distractions")
 
 
+class GeneratedContent(Base):
+    __tablename__ = "generated_content"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(String, ForeignKey("documents.id"))
+    section_id = Column(String, nullable=True)  # Per-section content
+    content_type = Column(String)
+    content_json = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, ForeignKey("sessions.id"))
-    role = Column(String)  # 'user' or 'assistant'
+    role = Column(String)
     content = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 

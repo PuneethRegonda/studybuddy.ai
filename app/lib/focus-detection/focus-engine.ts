@@ -105,6 +105,10 @@ export class FocusEngine {
     await new Promise<void>((resolve) => {
       videoElement.onloadeddata = () => resolve();
     });
+    // Ensure video is actually playing before processing
+    await videoElement.play();
+    // Wait for a couple frames so video dimensions are stable
+    await new Promise(r => setTimeout(r, 500));
 
     this.isRunning = true;
     this.lastFaceSeenTime = Date.now();
@@ -175,16 +179,27 @@ export class FocusEngine {
     if (now - this.lastProcessTime >= frameInterval) {
       this.lastProcessTime = now;
 
-      // Skip if video isn't ready
-      if (this.videoElement.readyState < 2) {
+      // Skip if video isn't ready or dimensions are 0
+      if (
+        this.videoElement.readyState < 2 ||
+        this.videoElement.videoWidth === 0 ||
+        this.videoElement.videoHeight === 0
+      ) {
         this.animationFrameId = requestAnimationFrame(this.processFrame);
         return;
       }
 
-      const result = this.faceLandmarker.detectForVideo(
-        this.videoElement,
-        now
-      );
+      let result;
+      try {
+        result = this.faceLandmarker.detectForVideo(
+          this.videoElement,
+          now
+        );
+      } catch (e) {
+        // MediaPipe can throw on first few frames — skip and retry
+        this.animationFrameId = requestAnimationFrame(this.processFrame);
+        return;
+      }
 
       if (result.faceLandmarks && result.faceLandmarks.length > 0) {
         const landmarks = result.faceLandmarks[0];

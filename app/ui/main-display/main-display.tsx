@@ -8,6 +8,7 @@ import QuizContent from './content/quiz-content';
 import MiniGameContent from './content/mini-game-content';
 import MindmapContent from './content/mindmap-content';
 import { Spinner } from '../dashboard/redirect';
+import { BookOpen, Brain, CreditCard, HelpCircle, Gamepad2 } from 'lucide-react';
 
 interface MainDisplayProps {
   isLoading?: boolean;
@@ -17,27 +18,42 @@ interface MainDisplayProps {
     data: any;
   } | null;
   onUpload?: () => void;
+  onContentTypeRequest?: (type: string) => void;
 }
+
+const CONTENT_TABS = [
+  { type: 'text', label: 'Reading', icon: BookOpen },
+  { type: 'flipcard', label: 'Flashcards', icon: CreditCard },
+  { type: 'quiz', label: 'Quiz', icon: HelpCircle },
+  { type: 'mindmap', label: 'Mind Map', icon: Brain },
+  { type: 'mini-game', label: 'Game', icon: Gamepad2 },
+];
 
 export default function MainDisplay({
   isLoading = false,
   contentData = null,
   onUpload,
+  onContentTypeRequest,
 }: MainDisplayProps) {
-  const [contentType, setContentType] = useState<string>('default');
+  const [activeTab, setActiveTab] = useState<string>('text');
 
   useEffect(() => {
     if (contentData?.type) {
-      setContentType(contentData.type);
+      setActiveTab(contentData.type === 'react' ? 'mini-game' : contentData.type);
     }
   }, [contentData]);
+
+  const handleTabClick = (type: string) => {
+    setActiveTab(type);
+    onContentTypeRequest?.(type);
+  };
 
   const renderContent = () => {
     if (!contentData) {
       return <DefaultDisplay onUpload={onUpload} />;
     }
 
-    switch (contentType) {
+    switch (contentData.type) {
       case 'text':
         return <TextContent data={contentData.data} />;
       case 'flipcard':
@@ -57,13 +73,10 @@ export default function MainDisplay({
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 p-6 overflow-hidden">
-        <div className="flex-1 overflow-y-auto border rounded-lg p-8 bg-blue-50 dark:bg-gray-800 border-blue-200 dark:border-gray-700 flex flex-col items-center justify-center">
+        <div className="flex-1 overflow-y-auto rounded-lg p-8 bg-gray-50 dark:bg-gray-800 flex flex-col items-center justify-center">
           <Spinner />
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-4">
-            Processing your study material
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Summarizing with AI...
+          <p className="text-gray-500 dark:text-gray-400 mt-4 text-sm">
+            Generating content...
           </p>
         </div>
       </div>
@@ -71,17 +84,38 @@ export default function MainDisplay({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 p-6 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden">
+      {/* Content type tabs — only show when content is loaded */}
       {contentData && (
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-            {contentData.data?.title || 'Study Session'}
-          </h1>
+        <div className="px-6 pt-4 pb-0">
+          <div className="flex items-center gap-1 border-b dark:border-gray-700">
+            {CONTENT_TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.type;
+              return (
+                <button
+                  key={tab.type}
+                  onClick={() => handleTabClick(tab.type)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto border rounded-lg p-4 bg-blue-50 dark:bg-gray-800 border-blue-500 dark:border-gray-700 flex items-center justify-center">
-        {renderContent()}
+      {/* Content area */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="h-full rounded-lg bg-gray-50 dark:bg-gray-800/50 flex items-center justify-center">
+          {renderContent()}
+        </div>
       </div>
     </div>
   );

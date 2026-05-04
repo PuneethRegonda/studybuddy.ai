@@ -84,23 +84,68 @@ def upload_pdf():
         if not pdf_bytes:
             return jsonify({"error": "Empty file"}), 400
 
-        prompt = """You are a smart learning assistant.
+        # Process document into structured sections
+        from document_processor import process_document
+        result = process_document(pdf_bytes, file.filename)
 
-Summarize this document into:
-- A clear, readable, well-structured Markdown formatted text
-- Use headings (##), bullet points, and important highlights
-- If there are diagrams or images, describe what they show
-- Write for a college-level audience
-- Strictly output only the Markdown text, no preamble"""
+        doc_id = f"doc-{uuid.uuid4()}"
 
-        summarized_text = ask_claude_with_pdf(pdf_bytes, prompt)
+        # Save document to DB
+        db = SessionLocal()
+        doc = Document(
+            id=doc_id,
+            filename=file.filename,
+            summary=result.get("summary", ""),
+            concepts=[c["id"] for c in result.get("knowledge_graph", {}).get("concepts", [])],
+            knowledge_graph=result.get("knowledge_graph"),
+        )
+        db.add(doc)
+
+        # Save sections
+        sections_data = []
+        for section in result.get("sections", []):
+            sec = DocumentSection(
+                id=section["id"],
+                document_id=doc_id,
+                title=section["title"],
+                content=section["content"],
+                concepts=section.get("concepts", []),
+                prerequisites=section.get("prerequisites", []),
+                section_order=section.get("order", 0),
+                estimated_read_min=section.get("estimated_read_min", 3),
+            )
+            db.add(sec)
+
+            # Initialize progress as not_started
+            prog = SectionProgress(
+                document_id=doc_id,
+                section_id=section["id"],
+                status="not_started",
+            )
+            db.add(prog)
+
+            sections_data.append({
+                "id": section["id"],
+                "title": section["title"],
+                "content": section["content"],
+                "concepts": section.get("concepts", []),
+                "prerequisites": section.get("prerequisites", []),
+                "order": section.get("order", 0),
+                "estimated_read_min": section.get("estimated_read_min", 3),
+                "status": "not_started",
+            })
+
+        db.commit()
+        db.close()
 
         return jsonify({
-            "id": f"text-{uuid.uuid4()}",
-            "type": "text",
+            "id": doc_id,
+            "type": "sectioned",
             "data": {
-                "title": file.filename.rsplit('.', 1)[0],
-                "content": summarized_text
+                "title": result.get("title", file.filename.rsplit('.', 1)[0]),
+                "summary": result.get("summary", ""),
+                "sections": sections_data,
+                "knowledge_graph": result.get("knowledge_graph"),
             }
         }), 200
 
@@ -109,13 +154,46 @@ Summarize this document into:
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
 
+def get_cached_content(document_id: str, content_type: str):
+    """Check if we already generated this content type for this document."""
+    if not document_id:
+        return None
+    db = SessionLocal()
+    cached = db.query(GeneratedContent).filter(
+        GeneratedContent.document_id == document_id,
+        GeneratedContent.content_type == content_type,
+    ).order_by(GeneratedContent.created_at.desc()).first()
+    db.close()
+    return cached.content_json if cached else None
+
+
+def save_content_cache(document_id: str, content_type: str, content_json):
+    """Save generated content to cache."""
+    if not document_id:
+        return
+    db = SessionLocal()
+    db.add(GeneratedContent(
+        document_id=document_id,
+        content_type=content_type,
+        content_json=content_json,
+    ))
+    db.commit()
+    db.close()
+
+
 @app.route("/generate-flashcards", methods=["POST"])
 def generate_flashcards():
     try:
         data = request.get_json()
         summarized_text = data.get("text")
+        document_id = data.get("document_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
+
+        # Check cache
+        cached = get_cached_content(document_id, "flipcard")
+        if cached:
+            return jsonify(cached)
 
         prompt = f"""Given this summarized content:
 
@@ -136,7 +214,7 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
         raw = ask_claude(prompt)
         cards = extract_json(raw)
 
-        return jsonify({
+        result = {
             "id": f"flashcard-{uuid.uuid4()}",
             "type": "flipcard",
             "data": {
@@ -146,7 +224,9 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
                     for i, c in enumerate(cards)
                 ]
             }
-        })
+        }
+        save_content_cache(document_id, "flipcard", result)
+        return jsonify(result)
 
     except Exception as e:
         logging.exception("Error generating flashcards")
@@ -158,8 +238,13 @@ def generate_quiz():
     try:
         data = request.get_json()
         summarized_text = data.get("text")
+        document_id = data.get("document_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
+
+        cached = get_cached_content(document_id, "quiz")
+        if cached:
+            return jsonify(cached)
 
         prompt = f"""Given this summarized content:
 
@@ -187,7 +272,7 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
         raw = ask_claude(prompt)
         questions = extract_json(raw)
 
-        return jsonify({
+        result = {
             "id": f"quiz-{uuid.uuid4()}",
             "type": "quiz",
             "data": {
@@ -204,7 +289,9 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
                     for i, q in enumerate(questions)
                 ]
             }
-        })
+        }
+        save_content_cache(document_id, "quiz", result)
+        return jsonify(result)
 
     except Exception as e:
         logging.exception("Error generating quiz")
@@ -216,8 +303,13 @@ def generate_mindmap():
     try:
         data = request.get_json()
         summarized_text = data.get("text")
+        document_id = data.get("document_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
+
+        cached = get_cached_content(document_id, "mindmap")
+        if cached:
+            return jsonify(cached)
 
         prompt = f"""Given the following summarized content:
 
@@ -251,6 +343,7 @@ Return ONLY valid JSON in this exact format, no explanation:
         raw = ask_claude(prompt)
         mindmap_data = extract_json(raw)
 
+        save_content_cache(document_id, "mindmap", mindmap_data)
         return jsonify(mindmap_data)
 
     except Exception as e:
@@ -263,8 +356,13 @@ def generate_mini_game():
     try:
         data = request.get_json()
         summarized_text = data.get("text")
+        document_id = data.get("document_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
+
+        cached = get_cached_content(document_id, "mini-game")
+        if cached:
+            return jsonify(cached)
 
         prompt = f"""You are a smart learning assistant.
 
@@ -296,6 +394,7 @@ Return ONLY valid JSON in this exact format, no explanation:
         raw = ask_claude(prompt)
         mini_game_data = extract_json(raw)
 
+        save_content_cache(document_id, "mini-game", mini_game_data)
         return jsonify(mini_game_data)
 
     except Exception as e:
@@ -305,7 +404,8 @@ Return ONLY valid JSON in this exact format, no explanation:
 
 ## ── Session & Analytics Endpoints ──
 
-from database import SessionLocal, Document, StudySession, FocusEvent, QuizAttempt, ContentTransition, DistractionEvent, ChatMessage
+from database import SessionLocal, Document, DocumentSection, SectionProgress, StudySession, FocusEvent, QuizAttempt, ContentTransition, DistractionEvent, ChatMessage, GeneratedContent
+from agent_engine import decide_welcome, decide_focus_drop, decide_section_complete, decide_quiz_result, decide_distraction_return, update_section_progress, get_next_section, get_section_progress_map
 from knowledge_graph import extract_knowledge_graph
 from study_agent import chat_with_agent, generate_distraction_recap
 from datetime import datetime
@@ -669,6 +769,135 @@ def agent_recap():
 
     except Exception as e:
         logging.exception("Error generating recap")
+        return jsonify({"error": str(e)}), 500
+
+
+## ── Agent Decision Endpoints ──
+
+@app.route("/api/agent/decide/welcome", methods=["POST"])
+def agent_decide_welcome():
+    """Get the agent's welcome/resume message for a document."""
+    try:
+        data = request.get_json()
+        document_id = data.get("document_id")
+        if not document_id:
+            return jsonify({"error": "No document_id"}), 400
+
+        action = decide_welcome(document_id)
+        return jsonify(action.to_dict())
+    except Exception as e:
+        logging.exception("Error in agent welcome")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/agent/decide/focus-drop", methods=["POST"])
+def agent_decide_focus_drop():
+    """Get the agent's suggestion when focus drops."""
+    try:
+        data = request.get_json()
+        action = decide_focus_drop(
+            data.get("document_id", ""),
+            data.get("section_id", ""),
+            data.get("content_type", "text"),
+        )
+        return jsonify(action.to_dict())
+    except Exception as e:
+        logging.exception("Error in agent focus drop")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/agent/decide/section-complete", methods=["POST"])
+def agent_decide_section_complete():
+    """Get the agent's suggestion after a section is read."""
+    try:
+        data = request.get_json()
+        action = decide_section_complete(data.get("document_id", ""), data.get("section_id", ""))
+        return jsonify(action.to_dict())
+    except Exception as e:
+        logging.exception("Error in agent section complete")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/agent/decide/quiz-result", methods=["POST"])
+def agent_decide_quiz_result():
+    """Get the agent's suggestion after a quiz."""
+    try:
+        data = request.get_json()
+        action = decide_quiz_result(
+            data.get("document_id", ""),
+            data.get("section_id", ""),
+            data.get("score", 0),
+            data.get("total", 0),
+            data.get("weak_concepts", []),
+        )
+        return jsonify(action.to_dict())
+    except Exception as e:
+        logging.exception("Error in agent quiz result")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/agent/decide/distraction-return", methods=["POST"])
+def agent_decide_distraction_return():
+    """Get the agent's message when student returns from distraction."""
+    try:
+        data = request.get_json()
+        action = decide_distraction_return(
+            data.get("document_id", ""),
+            data.get("section_id", ""),
+            data.get("section_title", ""),
+        )
+        return jsonify(action.to_dict())
+    except Exception as e:
+        logging.exception("Error in agent distraction return")
+        return jsonify({"error": str(e)}), 500
+
+
+## ── Section Progress Endpoints ──
+
+@app.route("/api/sections/<document_id>", methods=["GET"])
+def get_sections(document_id):
+    """Get all sections with progress for a document."""
+    db = SessionLocal()
+    sections = db.query(DocumentSection).filter(
+        DocumentSection.document_id == document_id
+    ).order_by(DocumentSection.section_order).all()
+
+    result = []
+    for sec in sections:
+        prog = db.query(SectionProgress).filter(
+            SectionProgress.section_id == sec.id,
+            SectionProgress.document_id == document_id,
+        ).first()
+
+        result.append({
+            "id": sec.id,
+            "title": sec.title,
+            "content": sec.content,
+            "concepts": sec.concepts,
+            "prerequisites": sec.prerequisites,
+            "order": sec.section_order,
+            "estimated_read_min": sec.estimated_read_min,
+            "status": prog.status if prog else "not_started",
+            "quiz_score": prog.quiz_score if prog else None,
+        })
+
+    db.close()
+    return jsonify({"sections": result})
+
+
+@app.route("/api/sections/<document_id>/<section_id>/progress", methods=["POST"])
+def update_progress(document_id, section_id):
+    """Update the progress of a section."""
+    try:
+        data = request.get_json()
+        status = data.get("status", "in_progress")
+        quiz_score = data.get("quiz_score")
+
+        update_section_progress(document_id, section_id, status, quiz_score)
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        logging.exception("Error updating progress")
         return jsonify({"error": str(e)}), 500
 
 
