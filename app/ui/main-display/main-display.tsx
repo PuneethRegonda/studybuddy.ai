@@ -19,6 +19,7 @@ interface MainDisplayProps {
   } | null;
   onUpload?: () => void;
   onContentTypeRequest?: (type: string) => void;
+  onQuizComplete?: (score: number, total: number) => void;
 }
 
 const CONTENT_TABS = [
@@ -34,6 +35,7 @@ export default function MainDisplay({
   contentData = null,
   onUpload,
   onContentTypeRequest,
+  onQuizComplete,
 }: MainDisplayProps) {
   const [activeTab, setActiveTab] = useState<string>('text');
 
@@ -61,7 +63,7 @@ export default function MainDisplay({
       case 'mindmap':
         return <MindmapContent data={contentData.data} />;
       case 'quiz':
-        return <QuizContent data={contentData.data} />;
+        return <QuizContent data={contentData.data} onQuizComplete={onQuizComplete} />;
       case 'react':
       case 'mini-game':
         return <MiniGameContent data={contentData.data} />;

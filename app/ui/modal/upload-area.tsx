@@ -101,10 +101,10 @@ export default function UploadArea({
   return (
     <Card
       className={`border border-dashed ${
-        isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50'
+        isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
       } rounded-lg p-12 mb-6 transition-colors ${
         !uploading
-          ? 'cursor-pointer hover:border-blue-400 hover:bg-blue-50/50'
+          ? 'cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-gray-700/50'
           : ''
       }`}
       onDragEnter={handleDragEnter}
@@ -114,7 +114,7 @@ export default function UploadArea({
       onClick={handleCardClick}
     >
       <div className="flex flex-col items-center justify-center text-center">
-        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-4">
           <Upload className="h-5 w-5 text-blue-500" />
         </div>
         <h3 className="text-lg font-medium mb-2">Upload sources</h3>

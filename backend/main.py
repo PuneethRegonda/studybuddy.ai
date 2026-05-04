@@ -154,26 +154,30 @@ def upload_pdf():
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
 
-def get_cached_content(document_id: str, content_type: str):
-    """Check if we already generated this content type for this document."""
+def get_cached_content(document_id: str, content_type: str, section_id: str = None):
+    """Check if we already generated this content type for this document/section."""
     if not document_id:
         return None
     db = SessionLocal()
-    cached = db.query(GeneratedContent).filter(
+    query = db.query(GeneratedContent).filter(
         GeneratedContent.document_id == document_id,
         GeneratedContent.content_type == content_type,
-    ).order_by(GeneratedContent.created_at.desc()).first()
+    )
+    if section_id:
+        query = query.filter(GeneratedContent.section_id == section_id)
+    cached = query.order_by(GeneratedContent.created_at.desc()).first()
     db.close()
     return cached.content_json if cached else None
 
 
-def save_content_cache(document_id: str, content_type: str, content_json):
+def save_content_cache(document_id: str, content_type: str, content_json, section_id: str = None):
     """Save generated content to cache."""
     if not document_id:
         return
     db = SessionLocal()
     db.add(GeneratedContent(
         document_id=document_id,
+        section_id=section_id,
         content_type=content_type,
         content_json=content_json,
     ))
@@ -187,29 +191,29 @@ def generate_flashcards():
         data = request.get_json()
         summarized_text = data.get("text")
         document_id = data.get("document_id")
+        section_id = data.get("section_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
 
-        # Check cache
-        cached = get_cached_content(document_id, "flipcard")
+        cached = get_cached_content(document_id, "flipcard", section_id)
         if cached:
             return jsonify(cached)
 
-        prompt = f"""Given this summarized content:
+        prompt = f"""You are creating flashcards for a student studying this material.
 
+Content:
 \"\"\"
 {summarized_text}
 \"\"\"
 
-Generate 5-7 flashcards. Each flashcard must have:
-- 'front': Question or Term
-- 'back': Answer
+Create 5-7 flashcards focused on KEY DEFINITIONS and TERMINOLOGY.
+- Front: A specific term, concept name, or "What is...?" question
+- Back: A clear, concise definition or explanation (1-2 sentences max)
+- Focus on terms the student needs to memorize
+- Do NOT create questions about relationships between concepts (save that for quizzes)
 
-Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
-[
-  {{"front": "...", "back": "..."}},
-  ...
-]"""
+Return as a raw JSON array only:
+[{{"front": "...", "back": "..."}}]"""
 
         raw = ask_claude(prompt)
         cards = extract_json(raw)
@@ -218,14 +222,14 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
             "id": f"flashcard-{uuid.uuid4()}",
             "type": "flipcard",
             "data": {
-                "title": "Generated Flashcards",
+                "title": "Key Terms",
                 "cards": [
                     {"id": str(i + 1), "front": c["front"], "back": c["back"]}
                     for i, c in enumerate(cards)
                 ]
             }
         }
-        save_content_cache(document_id, "flipcard", result)
+        save_content_cache(document_id, "flipcard", result, section_id)
         return jsonify(result)
 
     except Exception as e:
@@ -239,35 +243,32 @@ def generate_quiz():
         data = request.get_json()
         summarized_text = data.get("text")
         document_id = data.get("document_id")
+        section_id = data.get("section_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
 
-        cached = get_cached_content(document_id, "quiz")
+        cached = get_cached_content(document_id, "quiz", section_id)
         if cached:
             return jsonify(cached)
 
-        prompt = f"""Given this summarized content:
+        prompt = f"""You are creating a comprehension quiz for a student.
 
+Content:
 \"\"\"
 {summarized_text}
 \"\"\"
 
-Generate 5-7 multiple choice questions. Each question must have:
-- 'question'
-- 'options' (4 options)
-- 'correctOptionIndex' (0-3)
-- 'explanation'
+Create 5-7 multiple choice questions that test UNDERSTANDING and APPLICATION, not just recall.
+- Ask "Why does X happen?" not "What is X?"
+- Ask "In scenario Y, what would happen?" not "Define Y"
+- Ask "What is the relationship between X and Y?"
+- Include one question that requires comparing two concepts
+- Make wrong options plausible, not obviously wrong
 
-Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
-[
-  {{
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "correctOptionIndex": 2,
-    "explanation": "..."
-  }},
-  ...
-]"""
+Each question needs: question, options (4), correctOptionIndex (0-3), explanation
+
+Return as a raw JSON array only:
+[{{"question": "...", "options": ["...", "...", "...", "..."], "correctOptionIndex": 2, "explanation": "..."}}]"""
 
         raw = ask_claude(prompt)
         questions = extract_json(raw)
@@ -290,7 +291,7 @@ Return as a raw JSON array. No explanation, no markdown fences, just valid JSON:
                 ]
             }
         }
-        save_content_cache(document_id, "quiz", result)
+        save_content_cache(document_id, "quiz", result, section_id)
         return jsonify(result)
 
     except Exception as e:
@@ -304,10 +305,11 @@ def generate_mindmap():
         data = request.get_json()
         summarized_text = data.get("text")
         document_id = data.get("document_id")
+        section_id = data.get("section_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
 
-        cached = get_cached_content(document_id, "mindmap")
+        cached = get_cached_content(document_id, "mindmap", section_id)
         if cached:
             return jsonify(cached)
 
@@ -343,7 +345,7 @@ Return ONLY valid JSON in this exact format, no explanation:
         raw = ask_claude(prompt)
         mindmap_data = extract_json(raw)
 
-        save_content_cache(document_id, "mindmap", mindmap_data)
+        save_content_cache(document_id, "mindmap", mindmap_data, section_id)
         return jsonify(mindmap_data)
 
     except Exception as e:
@@ -360,7 +362,7 @@ def generate_mini_game():
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
 
-        cached = get_cached_content(document_id, "mini-game")
+        cached = get_cached_content(document_id, "mini-game", section_id)
         if cached:
             return jsonify(cached)
 
@@ -394,7 +396,7 @@ Return ONLY valid JSON in this exact format, no explanation:
         raw = ask_claude(prompt)
         mini_game_data = extract_json(raw)
 
-        save_content_cache(document_id, "mini-game", mini_game_data)
+        save_content_cache(document_id, "mini-game", mini_game_data, section_id)
         return jsonify(mini_game_data)
 
     except Exception as e:
