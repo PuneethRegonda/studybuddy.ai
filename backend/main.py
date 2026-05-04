@@ -359,6 +359,7 @@ def generate_mini_game():
         data = request.get_json()
         summarized_text = data.get("text")
         document_id = data.get("document_id")
+        section_id = data.get("section_id")
         if not summarized_text:
             return jsonify({"error": "No text provided"}), 400
 
@@ -772,6 +773,58 @@ def agent_recap():
     except Exception as e:
         logging.exception("Error generating recap")
         return jsonify({"error": str(e)}), 500
+
+
+## ── TTS Endpoint ──
+
+@app.route("/api/tts", methods=["POST"])
+def text_to_speech():
+    """Generate natural-sounding speech from text using Edge TTS."""
+    try:
+        import asyncio
+        import edge_tts
+        import tempfile
+
+        data = request.get_json()
+        text = data.get("text", "")
+        voice = data.get("voice", "en-US-JennyNeural")  # Soft, warm voice
+
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+
+        # Truncate if too long
+        if len(text) > 8000:
+            text = text[:8000]
+
+        # Generate audio — Edge TTS respects newlines as pauses
+        async def generate():
+            communicate = edge_tts.Communicate(text, voice, rate="-10%", pitch="-2Hz", volume="-10%")
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=os.path.join(os.path.dirname(__file__), "static"))
+            await communicate.save(tmp.name)
+            return tmp.name
+
+        # Run async in sync context
+        loop = asyncio.new_event_loop()
+        filepath = loop.run_until_complete(generate())
+        loop.close()
+
+        filename = os.path.basename(filepath)
+        return jsonify({"url": f"/static/{filename}"})
+
+    except Exception as e:
+        logging.exception("Error generating TTS")
+        return jsonify({"error": str(e)}), 500
+
+
+## ── Serve static audio files ──
+import os as _os
+_static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+_os.makedirs(_static_dir, exist_ok=True)
+
+@app.route("/static/<path:filename>")
+def serve_static(filename):
+    from flask import send_from_directory
+    return send_from_directory(_static_dir, filename)
 
 
 ## ── Agent Decision Endpoints ──

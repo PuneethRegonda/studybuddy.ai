@@ -25,42 +25,87 @@ interface MindmapContentProps {
 
 let nodeCounter = 0;
 
-const flattenTree = (
+const colors = [
+  { bg: '#3b82f6', border: '#2563eb' }, // blue - root
+  { bg: '#6366f1', border: '#4f46e5' }, // indigo
+  { bg: '#8b5cf6', border: '#7c3aed' }, // violet
+  { bg: '#a855f7', border: '#9333ea' }, // purple
+  { bg: '#d946ef', border: '#c026d3' }, // fuchsia
+];
+
+function getColor(depth: number) {
+  return colors[Math.min(depth, colors.length - 1)];
+}
+
+/**
+ * If a node has leaf children (no grandchildren), collapse them into
+ * a single node with bullet points instead of separate boxes.
+ */
+function flattenTree(
   node: MindmapNode,
   parentId: string | null,
   nodes: Node[],
   edges: Edge[],
   depth: number = 0
-) => {
+) {
   const id = `node-${nodeCounter++}`;
+  const color = getColor(depth);
 
-  // Color based on depth
-  const colors = [
-    { bg: '#3b82f6', text: '#ffffff', border: '#2563eb' }, // blue - root
-    { bg: '#6366f1', text: '#ffffff', border: '#4f46e5' }, // indigo
-    { bg: '#8b5cf6', text: '#ffffff', border: '#7c3aed' }, // violet
-    { bg: '#a855f7', text: '#ffffff', border: '#9333ea' }, // purple
-    { bg: '#d946ef', text: '#ffffff', border: '#c026d3' }, // fuchsia
-  ];
-  const color = colors[Math.min(depth, colors.length - 1)];
+  // Check if this node's children are all leaves (no grandchildren)
+  const children = node.children || [];
+  const allChildrenAreLeaves = children.length > 0 &&
+    children.every(c => !c.children || c.children.length === 0);
 
-  nodes.push({
-    id,
-    data: { label: node.title },
-    position: { x: 0, y: 0 },
-    style: {
-      background: color.bg,
-      color: color.text,
-      border: `2px solid ${color.border}`,
-      borderRadius: '8px',
-      padding: '8px 16px',
-      fontSize: depth === 0 ? '14px' : '12px',
-      fontWeight: depth === 0 ? '700' : '500',
-      minWidth: '120px',
-      textAlign: 'center' as const,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    },
-  });
+  if (allChildrenAreLeaves && children.length >= 2) {
+    // Collapse: show parent title + children as bullet list in one box
+    const bulletList = children.map(c => c.title).join('\n• ');
+    const label = `${node.title}\n\n• ${bulletList}`;
+
+    nodes.push({
+      id,
+      data: { label },
+      position: { x: 0, y: 0 },
+      style: {
+        background: color.bg,
+        color: '#ffffff',
+        border: `2px solid ${color.border}`,
+        borderRadius: '10px',
+        padding: '10px 14px',
+        fontSize: '11px',
+        fontWeight: '500',
+        whiteSpace: 'pre-line' as any,
+        textAlign: 'left' as any,
+        lineHeight: '1.5',
+        maxWidth: '220px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      },
+    });
+  } else {
+    // Regular node
+    const isRoot = depth === 0;
+    nodes.push({
+      id,
+      data: { label: node.title },
+      position: { x: 0, y: 0 },
+      style: {
+        background: color.bg,
+        color: '#ffffff',
+        border: `2px solid ${color.border}`,
+        borderRadius: isRoot ? '12px' : '8px',
+        padding: isRoot ? '10px 20px' : '6px 14px',
+        fontSize: isRoot ? '14px' : '12px',
+        fontWeight: isRoot ? '700' : '500',
+        maxWidth: '180px',
+        textAlign: 'center' as any,
+        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+      },
+    });
+
+    // Recurse into children that have their own children
+    children.forEach((child) =>
+      flattenTree(child, id, nodes, edges, depth + 1)
+    );
+  }
 
   if (parentId) {
     edges.push({
@@ -68,23 +113,18 @@ const flattenTree = (
       source: parentId,
       target: id,
       type: 'smoothstep',
-      style: { stroke: '#94a3b8', strokeWidth: 2 },
-      animated: false,
+      style: { stroke: '#64748b', strokeWidth: 2 },
     });
   }
+}
 
-  node.children?.forEach((child) =>
-    flattenTree(child, id, nodes, edges, depth + 1)
-  );
-};
+const nodeWidth = 190;
+const nodeHeight = 50;
 
-const nodeWidth = 180;
-const nodeHeight = 44;
-
-function applyDagreLayout(nodes: Node[], edges: Edge[]) {
+function applyLayout(nodes: Node[], edges: Edge[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 80 });
+  g.setGraph({ rankdir: 'TB', nodesep: 30, ranksep: 60 });
 
   nodes.forEach((n) =>
     g.setNode(n.id, { width: nodeWidth, height: nodeHeight })
@@ -121,7 +161,7 @@ export default function MindmapContent({ data }: MindmapContentProps) {
     const n: Node[] = [];
     const e: Edge[] = [];
     flattenTree(data.root, null, n, e);
-    setNodes(applyDagreLayout(n, e));
+    setNodes(applyLayout(n, e));
     setEdges(e);
   }, [data]);
 
@@ -136,9 +176,11 @@ export default function MindmapContent({ data }: MindmapContentProps) {
           zoomOnScroll
           panOnScroll
           fitView
-          fitViewOptions={{ padding: 0.3 }}
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.3}
+          maxZoom={1.5}
         >
-          <Background color="#475569" gap={20} size={1} />
+          <Background color="#475569" gap={24} size={1} />
           <Controls showInteractive={false} />
         </ReactFlow>
       </ReactFlowProvider>

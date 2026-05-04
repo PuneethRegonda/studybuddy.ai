@@ -107,8 +107,22 @@ export class FocusEngine {
     });
     // Ensure video is actually playing before processing
     await videoElement.play();
-    // Wait for a couple frames so video dimensions are stable
-    await new Promise(r => setTimeout(r, 500));
+
+    // Wait until video has real dimensions
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+          resolve();
+        } else {
+          requestAnimationFrame(check);
+        }
+      };
+      setTimeout(check, 800);
+    });
+
+    // Warm up MediaPipe — wait extra time for WASM to fully initialize
+    // instead of calling detectForVideo which throws in Next.js dev overlay
+    await new Promise(r => setTimeout(r, 1500));
 
     this.isRunning = true;
     this.lastFaceSeenTime = Date.now();
@@ -167,9 +181,21 @@ export class FocusEngine {
   }
 
   /**
-   * Main processing loop
+   * Main processing loop — wrapped in try/catch to prevent
+   * errors from bubbling to React error overlay during initialization
    */
   private processFrame = (): void => {
+    try {
+      this.processFrameInner();
+    } catch {
+      // Silently retry on next frame
+      if (this.isRunning) {
+        this.animationFrameId = requestAnimationFrame(this.processFrame);
+      }
+    }
+  };
+
+  private processFrameInner(): void {
     if (!this.isRunning || !this.faceLandmarker || !this.videoElement) return;
 
     const now = Date.now();
@@ -181,9 +207,12 @@ export class FocusEngine {
 
       // Skip if video isn't ready or dimensions are 0
       if (
+        !this.videoElement ||
+        !this.faceLandmarker ||
         this.videoElement.readyState < 2 ||
         this.videoElement.videoWidth === 0 ||
-        this.videoElement.videoHeight === 0
+        this.videoElement.videoHeight === 0 ||
+        this.videoElement.paused
       ) {
         this.animationFrameId = requestAnimationFrame(this.processFrame);
         return;
@@ -191,12 +220,17 @@ export class FocusEngine {
 
       let result;
       try {
-        result = this.faceLandmarker.detectForVideo(
-          this.videoElement,
+        result = this.faceLandmarker!.detectForVideo(
+          this.videoElement!,
           now
         );
-      } catch (e) {
-        // MediaPipe can throw on first few frames — skip and retry
+      } catch {
+        // MediaPipe throws on first few frames before fully initialized — skip silently
+        this.animationFrameId = requestAnimationFrame(this.processFrame);
+        return;
+      }
+
+      if (!result) {
         this.animationFrameId = requestAnimationFrame(this.processFrame);
         return;
       }
@@ -210,7 +244,7 @@ export class FocusEngine {
     }
 
     this.animationFrameId = requestAnimationFrame(this.processFrame);
-  };
+  }
 
   /**
    * Handle frame where face is detected
