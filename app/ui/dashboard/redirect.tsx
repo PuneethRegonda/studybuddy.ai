@@ -96,8 +96,8 @@ export default function Redirect() {
   }, [router]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-white to-blue-50">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-xl shadow-lg text-center">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-white to-blue-50 dark:from-gray-950 dark:to-gray-900">
+      <div className="w-full max-w-md p-8 space-y-8 bg-white dark:bg-gray-900 rounded-xl shadow-lg text-center">
         <div className="flex items-center justify-center">
           <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center">
             <svg
@@ -117,7 +117,7 @@ export default function Redirect() {
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
           Kickstart your learning journey!
         </h1>
 
