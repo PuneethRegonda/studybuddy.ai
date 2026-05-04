@@ -79,14 +79,26 @@ def upload_pdf():
         return jsonify({"error": "Empty file uploaded"}), 400
 
     try:
-        pdf_bytes = file.read()
+        file_bytes = file.read()
 
-        if not pdf_bytes:
+        if not file_bytes:
             return jsonify({"error": "Empty file"}), 400
 
+        filename = file.filename or "untitled"
+        is_pdf = filename.lower().endswith('.pdf') and file_bytes[:4] == b'%PDF'
+
         # Process document into structured sections
-        from document_processor import process_document
-        result = process_document(pdf_bytes, file.filename)
+        from document_processor import process_document, process_text_document
+
+        if is_pdf:
+            result = process_document(file_bytes, filename)
+        else:
+            # Text or Markdown file — read as text
+            try:
+                text_content = file_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                text_content = file_bytes.decode('latin-1')
+            result = process_text_document(text_content, filename)
 
         doc_id = f"doc-{uuid.uuid4()}"
 

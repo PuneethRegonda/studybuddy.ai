@@ -95,7 +95,7 @@ export default function StudioPanel({
             autoPlay
             muted
             playsInline
-            className={`w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`}
+            className={`studio-video w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`}
           />
 
           {isCameraActive && isCalibrating && (

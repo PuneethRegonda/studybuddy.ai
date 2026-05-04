@@ -7,6 +7,7 @@ import StudioPanel from '@/app/ui/studio-panel/studio-panel';
 import UploadSourcesModal from '@/app/ui/modal/upload-source-modal';
 import MainDisplay from '@/app/ui/main-display/main-display';
 import AgentCard from '@/app/ui/agent/agent-card';
+import BreakScreen from '@/app/ui/break-screen';
 import { predictFocus, ActivityTracker } from '@/app/lib/focus-detection';
 import { sendFile } from '@/app/services/send-file';
 import { BACKEND_API_URL } from '@/app/lib/constants';
@@ -50,6 +51,7 @@ export default function Dashboard() {
   const [showStudio, setShowStudio] = useState(false);
   const [isAbsent, setIsAbsent] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
+  const [studioMinimized, setStudioMinimized] = useState(false);
   const [agentMessage, setAgentMessage] = useState<AgentMessage | null>(null);
 
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -439,35 +441,89 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Break screen */}
-        {isOnBreak && (
-          <div className="absolute inset-0 bg-gray-950/95 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="max-w-sm text-center">
-              <div className="text-4xl mb-4">&#9749;</div>
-              <h2 className="text-xl font-medium text-white mb-2">Enjoy your break</h2>
-              <p className="text-gray-400 text-sm mb-8">Take your time. Your session is paused.</p>
-              <button
-                onClick={() => setIsOnBreak(false)}
-                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
-              >
-                I&apos;m back
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Break screen with timer */}
+        {isOnBreak && <BreakScreen onBack={() => setIsOnBreak(false)} />}
       </div>
 
-      {/* Studio Panel */}
-      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${showStudio ? 'w-[320px] opacity-100' : 'w-0 opacity-0'}`}>
-        {showStudio && (
-          <StudioPanel
-            onFocusUpdate={handleFocusUpdate}
-            onAbsenceStart={handleAbsenceStart}
-            onAbsenceEnd={handleAbsenceEnd}
-            isContentLoaded={contentLoaded}
-          />
-        )}
-      </div>
+      {/* Studio Panel — always render for camera, control visibility */}
+      {showStudio && (
+        <>
+          {/* Full sidebar panel */}
+          <div
+            className={`transition-all duration-500 ease-in-out flex-shrink-0 overflow-hidden ${
+              studioMinimized ? 'w-0' : 'w-[320px]'
+            }`}
+          >
+            <div className="w-[320px] h-full relative">
+              <button
+                onClick={() => setStudioMinimized(true)}
+                className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all shadow-sm"
+                title="Minimize studio"
+              >
+                <svg className="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7" />
+                </svg>
+              </button>
+              <StudioPanel
+                onFocusUpdate={handleFocusUpdate}
+                onAbsenceStart={handleAbsenceStart}
+                onAbsenceEnd={handleAbsenceEnd}
+                isContentLoaded={contentLoaded}
+              />
+            </div>
+          </div>
+
+          {/* Floating widget when minimized — shows camera + focus */}
+          {studioMinimized && (
+            <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right duration-300">
+              <div className="bg-gray-900 rounded-2xl shadow-2xl border border-gray-700/50 overflow-hidden w-64">
+                {/* Mini camera preview */}
+                <div className="relative w-full aspect-[16/9] bg-black">
+                  <video
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    ref={(el) => {
+                      // Mirror the main studio panel's video
+                      if (el) {
+                        const mainVideo = document.querySelector('.studio-video') as HTMLVideoElement;
+                        if (mainVideo?.srcObject) {
+                          el.srcObject = mainVideo.srcObject;
+                        }
+                      }
+                    }}
+                  />
+                  {/* Focus score overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full animate-pulse ${
+                          focusScore > 60 ? 'bg-green-400' : focusScore > 30 ? 'bg-amber-400' : 'bg-red-400'
+                        }`} />
+                        <span className="text-white text-xs font-semibold">{focusScore}%</span>
+                      </div>
+                      <span className="text-gray-400 text-xs">
+                        {focusScore > 60 ? 'Focused' : focusScore > 30 ? 'Drifting' : 'Low'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {/* Expand button */}
+                <button
+                  onClick={() => setStudioMinimized(false)}
+                  className="w-full py-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition flex items-center justify-center gap-1"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7" />
+                  </svg>
+                  Expand studio
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {showModal && (
         <UploadSourcesModal

@@ -132,3 +132,68 @@ Rules:
         section["order"] = i + 1
 
     return result
+
+
+def process_text_document(text: str, filename: str) -> dict:
+    """Process a plain text or markdown document into structured sections."""
+
+    if len(text) > 30000:
+        text = text[:30000]
+
+    prompt = f"""You are an expert educator. Analyze this text and break it into structured study sections.
+
+Text:
+\"\"\"
+{text}
+\"\"\"
+
+For each section:
+1. Give it a clear title
+2. Write a well-structured Markdown summary
+3. List the key concepts covered
+4. Note prerequisites from earlier sections
+5. Estimate reading time
+
+Also extract a knowledge graph of concepts.
+
+Return ONLY valid JSON in this format:
+{{
+  "title": "Document Title",
+  "summary": "2-3 sentence overview",
+  "sections": [
+    {{
+      "title": "Section Title",
+      "content": "## Section Title\\n\\nMarkdown content...",
+      "concepts": ["concept-1"],
+      "prerequisites": [],
+      "estimated_read_min": 3
+    }}
+  ],
+  "knowledge_graph": {{
+    "concepts": [
+      {{
+        "id": "concept-1",
+        "name": "Name",
+        "description": "Brief description",
+        "importance": 5,
+        "prerequisites": []
+      }}
+    ]
+  }}
+}}
+
+Break into 4-10 sections. Use kebab-case for concept IDs."""
+
+    message = client.messages.create(
+        model=MODEL,
+        max_tokens=8192,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    result = extract_json_from_response(message.content[0].text.strip())
+
+    for i, section in enumerate(result.get("sections", [])):
+        section["id"] = f"section-{i + 1}"
+        section["order"] = i + 1
+
+    return result
