@@ -4,3 +4,5 @@ anthropic>=0.40
 python-dotenv>=1.0
 sqlalchemy>=2.0
 edge-tts>=7.0
+chromadb>=0.4
+sentence-transformers>=2.2
