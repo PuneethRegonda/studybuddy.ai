@@ -150,6 +150,14 @@ def upload_pdf():
         db.commit()
         db.close()
 
+        # Index document for RAG pipeline (async-safe, non-blocking for response)
+        try:
+            from rag_pipeline import embed_and_store
+            chunk_count = embed_and_store(doc_id, sections_data)
+            logging.info(f"RAG: Indexed {chunk_count} chunks for document {doc_id}")
+        except Exception as rag_err:
+            logging.warning(f"RAG indexing failed (non-fatal): {rag_err}")
+
         return jsonify({
             "id": doc_id,
             "type": "sectioned",
@@ -422,7 +430,7 @@ Return ONLY valid JSON in this exact format, no explanation:
 from database import SessionLocal, Document, DocumentSection, SectionProgress, StudySession, FocusEvent, QuizAttempt, ContentTransition, DistractionEvent, ChatMessage, GeneratedContent
 from agent_engine import decide_welcome, decide_focus_drop, decide_section_complete, decide_quiz_result, decide_distraction_return, update_section_progress, get_next_section, get_section_progress_map
 from knowledge_graph import extract_knowledge_graph
-from study_agent import chat_with_agent, generate_distraction_recap
+from study_agent import chat_with_agent, chat_with_agent_rag, generate_distraction_recap
 from datetime import datetime
 
 
@@ -724,18 +732,20 @@ def get_session_analytics(session_id):
 
 @app.route("/api/agent/chat", methods=["POST"])
 def agent_chat():
-    """Chat with the study agent. Saves messages to DB."""
+    """Chat with the study agent. Supports both full-context and RAG pipelines."""
     try:
         data = request.get_json()
         user_message = data.get("message", "")
         session_id = data.get("sessionId")
         context = data.get("context", {})
+        pipeline = data.get("pipeline", "full_context")  # "rag" or "full_context"
 
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
 
         # Load history from DB if session exists
         conversation_history = []
+        document_id = None
         if session_id:
             db = SessionLocal()
             msgs = db.query(ChatMessage).filter(
@@ -743,32 +753,61 @@ def agent_chat():
             ).order_by(ChatMessage.created_at).all()
             conversation_history = [{"role": m.role, "content": m.content} for m in msgs]
 
+            # Get document_id from session
+            session = db.query(StudySession).filter(StudySession.id == session_id).first()
+            if session:
+                document_id = session.document_id
+
             # Save user message
             db.add(ChatMessage(session_id=session_id, role="user", content=user_message))
             db.commit()
             db.close()
 
-        response = chat_with_agent(
-            user_message=user_message,
-            conversation_history=conversation_history,
-            document_title=context.get("documentTitle", ""),
-            summary_text=context.get("summaryText", ""),
-            focus_score=context.get("focusScore", 75),
-            current_content_type=context.get("contentType", "text"),
-            distraction_count=context.get("distractionCount", 0),
-            session_duration_min=context.get("sessionDurationMin", 0),
-            knowledge_graph=context.get("knowledgeGraph"),
-            quiz_performance=context.get("quizPerformance"),
-        )
+        sources = []
+
+        if pipeline == "rag" and document_id:
+            # RAG pipeline
+            result = chat_with_agent_rag(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                document_id=document_id,
+                document_title=context.get("documentTitle", ""),
+                focus_score=context.get("focusScore", 75),
+                current_content_type=context.get("contentType", "text"),
+                distraction_count=context.get("distractionCount", 0),
+                session_duration_min=context.get("sessionDurationMin", 0),
+                knowledge_graph=context.get("knowledgeGraph"),
+                quiz_performance=context.get("quizPerformance"),
+            )
+            response_text = result["response"]
+            sources = result["sources"]
+        else:
+            # Full context pipeline (original)
+            response_text = chat_with_agent(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                document_title=context.get("documentTitle", ""),
+                summary_text=context.get("summaryText", ""),
+                focus_score=context.get("focusScore", 75),
+                current_content_type=context.get("contentType", "text"),
+                distraction_count=context.get("distractionCount", 0),
+                session_duration_min=context.get("sessionDurationMin", 0),
+                knowledge_graph=context.get("knowledgeGraph"),
+                quiz_performance=context.get("quizPerformance"),
+            )
 
         # Save assistant response
         if session_id:
             db = SessionLocal()
-            db.add(ChatMessage(session_id=session_id, role="assistant", content=response))
+            db.add(ChatMessage(session_id=session_id, role="assistant", content=response_text))
             db.commit()
             db.close()
 
-        return jsonify({"response": response})
+        return jsonify({
+            "response": response_text,
+            "sources": sources,
+            "pipeline": pipeline,
+        })
 
     except Exception as e:
         logging.exception("Error in agent chat")
@@ -988,6 +1027,80 @@ def update_progress(document_id, section_id):
         return jsonify({"ok": True})
     except Exception as e:
         logging.exception("Error updating progress")
+        return jsonify({"error": str(e)}), 500
+
+
+## ── RAG Evaluation Endpoints ──
+
+@app.route("/api/eval/generate-tests/<document_id>", methods=["POST"])
+def eval_generate_tests(document_id):
+    """Generate test cases for a document."""
+    try:
+        from eval_harness import generate_test_set
+        cases = generate_test_set(document_id)
+        return jsonify({"count": len(cases), "test_cases": cases})
+    except Exception as e:
+        logging.exception("Error generating test cases")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/eval/run/<document_id>", methods=["POST"])
+def eval_run(document_id):
+    """Run full RAG vs Full-Context evaluation."""
+    try:
+        from eval_harness import generate_test_set, run_evaluation
+        # Generate test cases if none exist
+        db = SessionLocal()
+        from database import EvalTestCase
+        count = db.query(EvalTestCase).filter(EvalTestCase.document_id == document_id).count()
+        db.close()
+        if count == 0:
+            generate_test_set(document_id)
+
+        result = run_evaluation(document_id)
+        return jsonify(result)
+    except Exception as e:
+        logging.exception("Error running evaluation")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/eval/runs/<document_id>", methods=["GET"])
+def eval_list_runs(document_id):
+    """List all eval runs for a document."""
+    from eval_harness import get_eval_runs
+    return jsonify({"runs": get_eval_runs(document_id)})
+
+
+@app.route("/api/eval/detail/<int:run_id>", methods=["GET"])
+def eval_run_detail(run_id):
+    """Get detailed results for a specific eval run."""
+    from eval_harness import get_eval_run_detail
+    return jsonify(get_eval_run_detail(run_id))
+
+
+@app.route("/api/rag/reindex/<document_id>", methods=["POST"])
+def rag_reindex(document_id):
+    """Re-index an existing document for RAG (for docs uploaded before RAG was added)."""
+    try:
+        from rag_pipeline import embed_and_store
+        db = SessionLocal()
+        sections = db.query(DocumentSection).filter(
+            DocumentSection.document_id == document_id
+        ).order_by(DocumentSection.section_order).all()
+
+        sections_data = [
+            {"id": s.id, "title": s.title, "content": s.content}
+            for s in sections
+        ]
+        db.close()
+
+        if not sections_data:
+            return jsonify({"error": "No sections found"}), 404
+
+        chunk_count = embed_and_store(document_id, sections_data)
+        return jsonify({"chunks_indexed": chunk_count, "sections": len(sections_data)})
+    except Exception as e:
+        logging.exception("Error re-indexing")
         return jsonify({"error": str(e)}), 500
 
 

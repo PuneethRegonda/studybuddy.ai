@@ -108,6 +108,80 @@ def chat_with_agent(
     return response.content[0].text.strip()
 
 
+def chat_with_agent_rag(
+    user_message: str,
+    conversation_history: list,
+    document_id: str,
+    document_title: str = "",
+    focus_score: int = 75,
+    current_content_type: str = "text",
+    distraction_count: int = 0,
+    session_duration_min: int = 0,
+    knowledge_graph: dict = None,
+    quiz_performance: dict = None,
+) -> dict:
+    """Chat using RAG pipeline — retrieves relevant chunks before answering."""
+    from rag_pipeline import retrieve_chunks, build_rag_prompt
+
+    # Retrieve relevant chunks
+    chunks = retrieve_chunks(document_id, user_message, top_k=5)
+    rag_context = build_rag_prompt(user_message, chunks)
+
+    system_prompt = f"""You are StudyBuddy, an AI study assistant.
+
+CURRENT SESSION STATE:
+- Document: "{document_title}"
+- Content format: {current_content_type}
+- Focus score: {focus_score}%
+- Session: {session_duration_min} minutes
+- Distractions: {distraction_count}
+
+{rag_context}
+
+YOUR ROLE:
+- Answer using ONLY the retrieved context above
+- Cite sources with [1], [2], etc.
+- Be concise and helpful
+- If their focus is low, keep responses short and engaging
+- Never mention focus scores directly — be natural
+"""
+
+    if knowledge_graph and knowledge_graph.get("concepts"):
+        concepts = knowledge_graph["concepts"]
+        concept_names = [c["name"] for c in concepts[:15]]
+        system_prompt += f"\nKEY CONCEPTS: {', '.join(concept_names)}\n"
+
+    if quiz_performance:
+        system_prompt += f"\nQUIZ: {quiz_performance.get('correct', 0)}/{quiz_performance.get('total', 0)} correct\n"
+
+    messages = [{"role": e["role"], "content": e["content"]} for e in conversation_history]
+    messages.append({"role": "user", "content": user_message})
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=1024,
+        system=system_prompt,
+        messages=messages,
+    )
+
+    return {
+        "response": response.content[0].text.strip(),
+        "sources": [
+            {
+                "text": c["text"][:200],
+                "section_id": c["section_id"],
+                "section_title": c["section_title"],
+                "score": c["score"],
+            }
+            for c in chunks
+        ],
+        "usage": {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        },
+    }
+
+
 def generate_distraction_recap(
     document_title: str,
     summary_text: str,
