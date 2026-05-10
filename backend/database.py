@@ -151,5 +151,45 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class EvalTestCase(Base):
+    __tablename__ = "eval_test_cases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(String, ForeignKey("documents.id"))
+    section_id = Column(String)
+    question = Column(Text)
+    ground_truth = Column(Text)
+    source_chunk_text = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EvalRun(Base):
+    __tablename__ = "eval_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(String, ForeignKey("documents.id"))
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, default="running")  # running | completed | failed
+    summary = Column(JSON)
+
+
+class EvalResult(Base):
+    __tablename__ = "eval_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("eval_runs.id"))
+    test_case_id = Column(Integer, ForeignKey("eval_test_cases.id"))
+    pipeline = Column(String)  # "rag" or "full_context"
+    answer = Column(Text)
+    accuracy_score = Column(Float)
+    relevance_score = Column(Float)
+    groundedness_score = Column(Float)
+    latency_ms = Column(Integer)
+    token_count = Column(Integer)
+    retrieved_chunks = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Create all tables
 Base.metadata.create_all(engine)
