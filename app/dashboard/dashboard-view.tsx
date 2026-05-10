@@ -607,6 +607,7 @@ export default function Dashboard() {
           knowledgeGraph,
         }}
         onCommand={handleChatCommand}
+        onScrollToSection={(sectionId: string) => loadSection(sectionId)}
       />
     </div>
   );
