@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Minimize2, Maximize2, BookOpen, Zap, FileText } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, User, BookOpen, Zap, FileText, GripVertical } from 'lucide-react';
 import { chatWithAgent, getChatHistory, AgentContext, ChatSource } from '@/app/services/agentService';
 import ReactMarkdown from 'react-markdown';
 
@@ -20,6 +20,112 @@ interface AgentChatProps {
   onScrollToSection?: (sectionId: string) => void;
 }
 
+/** Renders response text with interactive [1], [2] citation badges that show tooltips on hover */
+function CitationText({
+  content,
+  sources,
+  msgIdx,
+  onHover,
+  onNavigate,
+}: {
+  content: string;
+  sources: ChatSource[];
+  msgIdx: number;
+  onHover: (info: { msgIdx: number; srcIdx: number; rect: DOMRect } | null) => void;
+  onNavigate?: (sectionId: string) => void;
+}) {
+  // Split content around [1], [2], etc. patterns
+  const parts = content.split(/(\[\d+\])/g);
+  const [tooltip, setTooltip] = useState<{ idx: number; x: number; y: number } | null>(null);
+
+  return (
+    <div className="relative">
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <ReactMarkdown
+          components={{
+            p: ({ children }) => {
+              // Process children to find citation patterns
+              const processNode = (node: React.ReactNode): React.ReactNode => {
+                if (typeof node !== 'string') return node;
+                const nodeParts = node.split(/(\[\d+\])/g);
+                if (nodeParts.length === 1) return node;
+                return nodeParts.map((part, pi) => {
+                  const match = part.match(/^\[(\d+)\]$/);
+                  if (match) {
+                    const srcIdx = parseInt(match[1]) - 1;
+                    const source = sources[srcIdx];
+                    if (!source) return part;
+                    return (
+                      <span
+                        key={pi}
+                        className="relative inline-flex"
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setTooltip({ idx: srcIdx, x: rect.left, y: rect.top });
+                        }}
+                        onMouseLeave={() => setTooltip(null)}
+                        onClick={(e) => { e.stopPropagation(); onNavigate?.(source.section_id); }}
+                      >
+                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-800 hover:scale-110 transition-all align-middle">
+                          {match[1]}
+                        </span>
+                      </span>
+                    );
+                  }
+                  return part;
+                });
+              };
+              const processed = Array.isArray(children)
+                ? children.map(processNode)
+                : processNode(children);
+              return <p>{processed}</p>;
+            },
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+
+      {/* Hover tooltip */}
+      {tooltip && sources[tooltip.idx] && (
+        <div
+          className="fixed z-[100] w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 pointer-events-none animate-in fade-in duration-150"
+          style={{
+            left: Math.min(tooltip.x, window.innerWidth - 300),
+            top: tooltip.y - 8,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+              {tooltip.idx + 1}
+            </span>
+            <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+              {sources[tooltip.idx].section_title}
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-4">
+            {sources[tooltip.idx].text}
+          </p>
+          <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-1">
+              <div className="w-10 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${Math.round(sources[tooltip.idx].score * 100)}%` }} />
+              </div>
+              <span className="text-[9px] text-gray-400">{Math.round(sources[tooltip.idx].score * 100)}% match</span>
+            </div>
+            <span className="text-[9px] text-emerald-500">Click to view →</span>
+          </div>
+          {/* Tooltip arrow */}
+          <div className="absolute bottom-0 left-6 translate-y-full">
+            <div className="w-2 h-2 bg-white dark:bg-gray-800 border-r border-b border-gray-200 dark:border-gray-600 rotate-45 -translate-y-1" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AgentChat({ context, sessionId, isVisible, onCommand, onScrollToSection }: AgentChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -27,8 +133,48 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
   const [isMinimized, setIsMinimized] = useState(true);
   const [pipeline, setPipeline] = useState<'rag' | 'full_context'>('rag');
   const [expandedSources, setExpandedSources] = useState<number | null>(null);
+  const [hoveredCitation, setHoveredCitation] = useState<{ msgIdx: number; srcIdx: number; rect: DOMRect } | null>(null);
+  const [size, setSize] = useState({ w: 540, h: 680 });
+  const [isExpanded, setIsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasLoadedHistory = useRef(false);
+  const isResizing = useRef(false);
+  const startPos = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  // Drag-to-resize from top-left corner
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    startPos.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const dw = startPos.current.x - ev.clientX;
+      const dh = startPos.current.y - ev.clientY;
+      setSize({
+        w: Math.max(400, Math.min(800, startPos.current.w + dw)),
+        h: Math.max(400, Math.min(900, startPos.current.h + dh)),
+      });
+    };
+
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [size]);
+
+  const toggleExpand = () => {
+    if (isExpanded) {
+      setSize({ w: 540, h: 680 });
+    } else {
+      setSize({ w: 700, h: 850 });
+    }
+    setIsExpanded(!isExpanded);
+  };
 
   // Load chat history from DB when session starts
   useEffect(() => {
@@ -132,7 +278,19 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
   }
 
   return (
-    <div className="fixed bottom-4 right-[240px] w-96 h-[500px] bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl flex flex-col z-[60]">
+    <div
+      className="fixed bottom-4 right-[240px] bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl flex flex-col z-[60]"
+      style={{ width: size.w, height: size.h }}
+    >
+      {/* Resize handle — top-left corner */}
+      <div
+        onMouseDown={onResizeStart}
+        className="absolute -top-1 -left-1 w-5 h-5 cursor-nw-resize flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity z-10"
+        title="Drag to resize"
+      >
+        <GripVertical className="h-3 w-3 text-gray-400 -rotate-45" />
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
         <div className="flex items-center gap-2">
@@ -149,10 +307,10 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
                   ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
-              title="Full Context — sends document summary to AI"
+              title="Quick Answer — uses document summary for fast responses"
             >
               <Zap className="h-3 w-3" />
-              <span>Full</span>
+              <span>Quick</span>
             </button>
             <button
               onClick={() => setPipeline('rag')}
@@ -161,18 +319,25 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
                   ? 'bg-white dark:bg-gray-700 text-emerald-600 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
-              title="RAG — retrieves relevant chunks with source citations"
+              title="Deep Search — finds exact passages and cites sources from your document"
             >
               <BookOpen className="h-3 w-3" />
-              <span>RAG</span>
+              <span>Deep Search</span>
             </button>
           </div>
-          <button
-            onClick={() => setIsMinimized(true)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition ml-1"
-          >
-            <Minimize2 className="h-4 w-4 text-gray-500" />
-          </button>
+          {/* Window controls — macOS style */}
+          <div className="flex items-center gap-1.5 ml-2">
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="w-3 h-3 rounded-full bg-yellow-400 hover:bg-yellow-500 transition border border-yellow-500/30"
+              title="Minimize"
+            />
+            <button
+              onClick={toggleExpand}
+              className="w-3 h-3 rounded-full bg-green-400 hover:bg-green-500 transition border border-green-500/30"
+              title={isExpanded ? 'Restore' : 'Expand'}
+            />
+          </div>
         </div>
       </div>
 
@@ -185,7 +350,7 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
             <p className="text-xs mt-1">I can explain concepts, quiz you, or help you focus</p>
             <div className="mt-3 flex items-center justify-center gap-1 text-xs">
               <span className={pipeline === 'rag' ? 'text-emerald-500' : 'text-blue-500'}>
-                {pipeline === 'rag' ? 'RAG mode — answers cite sources' : 'Full context mode'}
+                {pipeline === 'rag' ? 'Deep Search — answers cite exact passages' : 'Quick mode — fast answers from summary'}
               </span>
             </div>
           </div>
@@ -208,7 +373,11 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
               >
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    {msg.sources && msg.sources.length > 0 ? (
+                      <CitationText content={msg.content} sources={msg.sources} msgIdx={i} onHover={setHoveredCitation} onNavigate={onScrollToSection} />
+                    ) : (
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    )}
                   </div>
                 ) : (
                   msg.content
@@ -218,35 +387,63 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
 
             {/* Source references for RAG responses */}
             {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-              <div className="ml-8 mt-1.5">
+              <div className="ml-8 mt-2">
                 <button
                   onClick={() => setExpandedSources(expandedSources === i ? null : i)}
-                  className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition"
+                  className="group flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition"
                 >
-                  <FileText className="h-3 w-3" />
-                  <span>{msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} referenced</span>
-                  <span className="text-[10px]">{expandedSources === i ? '▲' : '▼'}</span>
+                  <div className="flex -space-x-1">
+                    {msg.sources.slice(0, 3).map((_, si) => (
+                      <div key={si} className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-900/40 border-2 border-white dark:border-gray-900 flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">{si + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="group-hover:underline">
+                    {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} from your document
+                  </span>
+                  <span className="text-[10px] transition-transform" style={{ transform: expandedSources === i ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
                 </button>
 
                 {expandedSources === i && (
-                  <div className="mt-1.5 space-y-1.5">
+                  <div className="mt-2 space-y-2">
                     {msg.sources.map((source, si) => (
                       <div
                         key={si}
-                        className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-md px-2.5 py-2 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition"
+                        className="group/card relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-md transition-all"
                         onClick={() => onScrollToSection?.(source.section_id)}
                       >
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                            [{si + 1}] {source.section_title}
-                          </span>
-                          <span className="text-[10px] text-emerald-500 dark:text-emerald-400">
-                            {Math.round(source.score * 100)}% match
-                          </span>
+                        {/* Left accent bar */}
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400 dark:bg-emerald-500 rounded-l-lg" />
+
+                        <div className="pl-3.5 pr-3 py-2.5">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                              {si + 1}
+                            </span>
+                            <span className="text-xs font-medium text-gray-800 dark:text-gray-200 flex-1 truncate">
+                              {source.section_title}
+                            </span>
+                            {/* Match confidence bar */}
+                            <div className="flex items-center gap-1">
+                              <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-emerald-400 dark:bg-emerald-500 rounded-full"
+                                  style={{ width: `${Math.round(source.score * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 w-7 text-right">
+                                {Math.round(source.score * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed pl-7">
+                            {source.text}
+                          </p>
+                          <div className="flex items-center gap-1 mt-1 pl-7 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                            <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Click to view in document →</span>
+                          </div>
                         </div>
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                          {source.text}
-                        </p>
                       </div>
                     ))}
                   </div>
@@ -299,7 +496,7 @@ export default function AgentChat({ context, sessionId, isVisible, onCommand, on
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={pipeline === 'rag' ? 'Ask with source citations...' : 'Ask about your material...'}
+            placeholder={pipeline === 'rag' ? 'Deep search your material...' : 'Ask a quick question...'}
             className="flex-1 px-3 py-2 text-sm border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isLoading}
           />
