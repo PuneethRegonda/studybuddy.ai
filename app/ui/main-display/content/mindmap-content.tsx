@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import ReactFlow, {
   ReactFlowProvider,
   Controls,
   Background,
   Node,
   Edge,
+  useNodesState,
+  useEdgesState,
 } from 'reactflow';
 import dagre from 'dagre';
 import 'reactflow/dist/style.css';
@@ -144,17 +146,9 @@ function applyLayout(nodes: Node[], edges: Edge[]) {
   });
 }
 
-export default function MindmapContent({ data }: MindmapContentProps) {
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-
-  if (!data || !data.root?.title) {
-    return (
-      <div className="w-full p-8 text-center text-gray-400">
-        No mindmap data available
-      </div>
-    );
-  }
+function MindmapFlow({ data }: MindmapContentProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     nodeCounter = 0;
@@ -166,23 +160,39 @@ export default function MindmapContent({ data }: MindmapContentProps) {
   }, [data]);
 
   return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodesDraggable={true}
+      nodesConnectable={false}
+      zoomOnScroll
+      panOnScroll
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.3}
+      maxZoom={1.5}
+    >
+      <Background color="#475569" gap={24} size={1} />
+      <Controls showInteractive={false} />
+    </ReactFlow>
+  );
+}
+
+export default function MindmapContent({ data }: MindmapContentProps) {
+  if (!data || !data.root?.title) {
+    return (
+      <div className="w-full p-8 text-center text-gray-400">
+        No mindmap data available
+      </div>
+    );
+  }
+
+  return (
     <div className="w-full h-[75vh]">
       <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          zoomOnScroll
-          panOnScroll
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.3}
-          maxZoom={1.5}
-        >
-          <Background color="#475569" gap={24} size={1} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+        <MindmapFlow data={data} />
       </ReactFlowProvider>
     </div>
   );

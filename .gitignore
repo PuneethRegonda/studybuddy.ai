@@ -6,3 +6,6 @@ dist/
 __pycache__/
 *.pyc
 .DS_Store
+backend/chroma_db/
+backend/static/*.mp3
+*.mp4

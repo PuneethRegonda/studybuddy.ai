@@ -117,7 +117,7 @@ export default function MainDisplay({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="h-full rounded-lg bg-gray-50 dark:bg-gray-800/50 flex items-center justify-center">
+        <div className="h-full rounded-lg bg-white dark:bg-gray-900 flex items-center justify-center">
           {renderContent()}
         </div>
       </div>

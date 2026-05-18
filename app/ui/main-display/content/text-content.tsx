@@ -153,17 +153,17 @@ export default function TextContent({ data, onSectionDone }: TextContentProps) {
   };
 
   return (
-    <div className="w-full h-full max-w-3xl mx-auto overflow-auto">
-      <div className="px-8 py-6">
+    <div className="w-full h-full max-w-2xl mx-auto overflow-auto">
+      <div className="px-10 py-10">
         {/* Header */}
         {data.title && (
-          <h1 className="text-2xl font-bold dark:text-gray-100 mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight dark:text-gray-50 mb-1 leading-snug">
             {data.title}
           </h1>
         )}
 
         {/* TTS controls */}
-        <div className="flex items-center gap-2 mb-6 pb-4 border-b dark:border-gray-700">
+        <div className="flex items-center gap-2 mt-4 mb-8 pb-5 border-b border-gray-200 dark:border-gray-700/60">
           {!isPlaying && !isLoading ? (
             <button
               onClick={handleSpeak}
@@ -203,24 +203,48 @@ export default function TextContent({ data, onSectionDone }: TextContentProps) {
           )}
         </div>
 
-        {/* Content */}
-        <article className="prose prose-gray dark:prose-invert max-w-none
+        {/* Content — reading-optimized typography */}
+        <article className="
+          prose prose-gray dark:prose-invert max-w-none
+
           prose-headings:font-semibold prose-headings:tracking-tight
-          prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-3 prose-h2:text-gray-900 dark:prose-h2:text-gray-100
-          prose-h3:text-lg prose-h3:mt-6 prose-h3:mb-2
-          prose-p:text-base prose-p:leading-7 prose-p:text-gray-700 dark:prose-p:text-gray-300
-          prose-li:text-base prose-li:leading-7 prose-li:text-gray-700 dark:prose-li:text-gray-300
-          prose-strong:text-gray-900 dark:prose-strong:text-gray-100
+
+          prose-h2:text-[1.3rem] prose-h2:mt-10 prose-h2:mb-4
+          prose-h2:text-gray-900 dark:prose-h2:text-gray-100
+          prose-h2:pb-2 prose-h2:border-b prose-h2:border-gray-200 dark:prose-h2:border-gray-700/50
+
+          prose-h3:text-[1.1rem] prose-h3:mt-8 prose-h3:mb-3
+          prose-h3:text-gray-800 dark:prose-h3:text-gray-200
+
+          prose-p:text-[0.95rem] prose-p:leading-[1.85] prose-p:text-gray-700 dark:prose-p:text-gray-300
+          prose-p:mb-5
+
+          prose-li:text-[0.95rem] prose-li:leading-[1.85] prose-li:text-gray-700 dark:prose-li:text-gray-300
+          prose-li:mb-1.5
+          prose-ul:pl-5 prose-ul:my-4
+          prose-ol:pl-5 prose-ol:my-4
+
+          prose-strong:text-gray-900 dark:prose-strong:text-white prose-strong:font-semibold
+
           prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-          prose-code:text-sm prose-code:bg-gray-100 dark:prose-code:bg-gray-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-          prose-blockquote:border-blue-500 prose-blockquote:bg-blue-50/50 dark:prose-blockquote:bg-blue-900/10 prose-blockquote:rounded-r-lg prose-blockquote:py-1
+
+          prose-code:text-[0.85rem] prose-code:bg-gray-100 dark:prose-code:bg-gray-800
+          prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-normal
+
+          prose-blockquote:border-l-[3px] prose-blockquote:border-blue-400 dark:prose-blockquote:border-blue-500
+          prose-blockquote:bg-blue-50/40 dark:prose-blockquote:bg-blue-900/10
+          prose-blockquote:rounded-r-lg prose-blockquote:py-2 prose-blockquote:px-5 prose-blockquote:my-6
+          prose-blockquote:text-[0.93rem] prose-blockquote:leading-[1.8] prose-blockquote:italic
+          prose-blockquote:text-gray-600 dark:prose-blockquote:text-gray-400
+
+          prose-hr:my-8 prose-hr:border-gray-200 dark:prose-hr:border-gray-700/50
         ">
           <ReactMarkdown>{cleanMarkdown(data.content)}</ReactMarkdown>
         </article>
 
         {/* Section done button */}
         {onSectionDone && (
-          <div className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-center">
+          <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-700/60 flex justify-center">
             <button
               onClick={onSectionDone}
               className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-medium flex items-center gap-2"
